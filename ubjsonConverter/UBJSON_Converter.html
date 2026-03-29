@@ -60,6 +60,14 @@
         .hex-cell { color: #007AFF; }
         .ascii-table-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 32px; }
         .ascii-col table { width: 100%; }
+        /* Byte inspector tooltip */
+        #byteTooltip { position:fixed; background:#2C2C2A; color:#F1EFE8; border-radius:6px; padding:8px 13px; font-size:12px; white-space:nowrap; pointer-events:none; z-index:9999; display:none; }
+        #byteTooltip .tip-arrow { position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#2C2C2A; }
+        #byteTooltip .tip-row { display:flex; gap:14px; align-items:flex-start; }
+        #byteTooltip .tip-col { display:flex; flex-direction:column; gap:3px; }
+        #byteTooltip .tip-key { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#888780; }
+        #byteTooltip .tip-val { font-size:13px; font-weight:600; font-family:'Courier New',monospace; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+        #byteTooltip .tip-div { width:0.5px; background:#444441; align-self:stretch; }
     </style>
     </style>
 </head>
@@ -284,15 +292,24 @@ class UBJSONAnnotator {
         this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         this.offset = 0;
         this.roles = new Array(bytes.length).fill('data');
+        this.typeMarkers = new Array(bytes.length).fill(null);
     }
 
     mark(start, end, role) {
         for (let i = start; i < end && i < this.roles.length; i++) this.roles[i] = role;
     }
 
+    // Mark a range as 'data' and record which type marker governs those bytes.
+    markData(start, end, typeChar) {
+        for (let i = start; i < end && i < this.roles.length; i++) {
+            this.roles[i] = 'data';
+            this.typeMarkers[i] = typeChar;
+        }
+    }
+
     annotate() {
         try { this.annotateValue(); } catch(e) { /* partial annotation is fine */ }
-        return this.roles;
+        return { roles: this.roles, typeMarkers: this.typeMarkers };
     }
 
     // Reads a typed integer used as a length prefix.
@@ -313,9 +330,9 @@ class UBJSONAnnotator {
     }
 
     // Marks the length bytes as 'length' and the payload bytes as 'data'
-    annotateString() {
+    annotateString(typeChar = 'S') {
         const len = this.annotateIntAs('length');
-        this.mark(this.offset, this.offset + len, 'data');
+        this.markData(this.offset, this.offset + len, typeChar);
         this.offset += len;
     }
 
@@ -329,16 +346,16 @@ class UBJSONAnnotator {
         switch (typeChar) {
             case '{': this.annotateObject(); break;
             case '[': this.annotateArray(); break;
-            case 'S': case 'H': this.annotateString(); break;
+            case 'S': case 'H': this.annotateString(typeChar); break;
             case 'N': case 'T': case 'F': case 'Z': break;
             case 'U': case 'i': case 'C':
-                this.mark(this.offset, this.offset + 1, 'data'); this.offset++; break;
+                this.markData(this.offset, this.offset + 1, typeChar); this.offset++; break;
             case 'I':
-                this.mark(this.offset, this.offset + 2, 'data'); this.offset += 2; break;
+                this.markData(this.offset, this.offset + 2, typeChar); this.offset += 2; break;
             case 'l': case 'd':
-                this.mark(this.offset, this.offset + 4, 'data'); this.offset += 4; break;
+                this.markData(this.offset, this.offset + 4, typeChar); this.offset += 4; break;
             case 'L': case 'D':
-                this.mark(this.offset, this.offset + 8, 'data'); this.offset += 8; break;
+                this.markData(this.offset, this.offset + 8, typeChar); this.offset += 8; break;
         }
     }
 
@@ -385,14 +402,14 @@ class UBJSONAnnotator {
     annotateTypedValue(typeChar) {
         switch (typeChar) {
             case 'U': case 'i': case 'C':
-                this.mark(this.offset, this.offset + 1, 'data'); this.offset++; break;
+                this.markData(this.offset, this.offset + 1, typeChar); this.offset++; break;
             case 'I':
-                this.mark(this.offset, this.offset + 2, 'data'); this.offset += 2; break;
+                this.markData(this.offset, this.offset + 2, typeChar); this.offset += 2; break;
             case 'l': case 'd':
-                this.mark(this.offset, this.offset + 4, 'data'); this.offset += 4; break;
+                this.markData(this.offset, this.offset + 4, typeChar); this.offset += 4; break;
             case 'L': case 'D':
-                this.mark(this.offset, this.offset + 8, 'data'); this.offset += 8; break;
-            case 'S': case 'H': this.annotateString(); break;
+                this.markData(this.offset, this.offset + 8, typeChar); this.offset += 8; break;
+            case 'S': case 'H': this.annotateString(typeChar); break;
             case 'T': case 'F': case 'Z': case 'N': break; // no payload bytes
             case '[': this.annotateArray(); break;
             case '{': this.annotateObject(); break;
@@ -559,7 +576,7 @@ function setHexColored(bytes, roles) {
         const color = ((b === 0x7B || b === 0x7D) && roles[i] === 'marker')
             ? '#333'
             : (ROLE_COLORS[roles[i]] || '#333');
-        return `<span style="color:${color}">${hex}</span>`;
+        return `<span data-bi="${i}" style="color:${color}">${hex}</span>`;
     });
     document.getElementById('hexInput').innerHTML =
         parts.join('<span style="color:#999">, </span>');
@@ -571,8 +588,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hexInput').textContent = '';
     document.getElementById('jsonInput').value = '';
     document.getElementById('err').style.display = 'none';
-    document.getElementById('colorToggle').checked = false;
+    document.getElementById('colorToggle').checked = true;
     document.getElementById('legendRow').style.display = 'none';
+    window._ubHasConverted = false;
     updateByteCount();
 
     document.getElementById('hexInput').addEventListener('paste', e => {
@@ -601,7 +619,12 @@ function updateByteCount() {
 
 function onColorToggle() {
     const colorToggle = document.getElementById('colorToggle');
-    document.getElementById('legendRow').style.display = colorToggle.checked ? 'flex' : 'none';
+    if (!colorToggle.checked) {
+        window._ubAnn = null;
+        window._ubHasConverted = false;
+        hideByteTooltip();
+        document.getElementById('legendRow').style.display = 'none';
+    }
     // Re-apply coloring or plain rendering to the hex box
     const hexText = getHexText();
     const matches = hexText.match(/(?:0x)?[0-9a-fA-F]{2}/gi);
@@ -626,9 +649,12 @@ function parseHexBytes() {
 // If color-coding is on, annotate and render; otherwise ensure plain text
 function applyColoring(bytes, plainFallback) {
     if (document.getElementById('colorToggle').checked) {
-        const roles = new UBJSONAnnotator(bytes).annotate();
-        setHexColored(bytes, roles);
+        const ann = new UBJSONAnnotator(bytes).annotate();
+        window._ubAnn = { bytes, roles: ann.roles, typeMarkers: ann.typeMarkers };
+        setHexColored(bytes, ann.roles);
     } else {
+        window._ubAnn = null;
+        hideByteTooltip();
         setHexPlain(plainFallback);
     }
 }
@@ -660,6 +686,9 @@ function clearAll() {
     document.getElementById('hexInput').textContent = '';
     document.getElementById('jsonInput').value = '';
     document.getElementById('err').style.display = 'none';
+    window._ubAnn = null;
+    window._ubHasConverted = false;
+    hideByteTooltip();
     updateByteCount();
 }
 
@@ -673,6 +702,10 @@ function toJS() {
         const plainHex = Array.from(bytes)
             .map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(', ');
         applyColoring(bytes, plainHex);
+        if (document.getElementById('colorToggle').checked) {
+            window._ubHasConverted = true;
+            document.getElementById('legendRow').style.display = 'flex';
+        }
         updateByteCount();
     } catch (e) {
         const eDiv = document.getElementById('err');
@@ -689,6 +722,10 @@ function toUB() {
         encoder.write(json);
         const bytes = encoder.getBytes();
         applyColoring(bytes, encoder.getHex());
+        if (document.getElementById('colorToggle').checked) {
+            window._ubHasConverted = true;
+            document.getElementById('legendRow').style.display = 'flex';
+        }
         updateByteCount();
     } catch (e) {
         const eDiv = document.getElementById('err');
@@ -782,6 +819,141 @@ function toggleCard(id) {
 </script>
 
 </div><!-- /page-wrap -->
+
+<div id="byteTooltip">
+    <div class="tip-row" id="tipRow"></div>
+    <div class="tip-arrow"></div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────
+   BYTE INSPECTOR TOOLTIP
+   Shows a floating tooltip when the user selects
+   a byte span while color-coding is on.
+   - 'data' spans: shows type + decoded value + byte count
+   - 'marker' spans: shows marker character + type name
+   Partial-character selections are ignored — a span
+   must be fully enclosed by the selection range.
+───────────────────────────────────────────── */
+
+const TYPE_LABELS = {
+    'U':'uint8',  'i':'int8',   'I':'int16',  'l':'int32',  'L':'int64',
+    'd':'float32','D':'float64','C':'char',    'S':'string', 'H':'high-precision',
+    'T':'true',   'F':'false',  'Z':'null',    'N':'no-op',
+    '{':'object start', '}':'object end',
+    '[':'array start',  ']':'array end',
+    '$':'type specifier', '#':'count specifier'
+};
+
+// For fixed-size numeric types the entire field must be selected.
+const FIXED_SIZES = { 'U':1, 'i':1, 'C':1, 'I':2, 'l':4, 'd':4, 'L':8, 'D':8 };
+
+function decodeDataBytes(bytes, typeChar) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const expected = FIXED_SIZES[typeChar];
+    if (expected !== undefined && bytes.length !== expected) return null;
+    switch (typeChar) {
+        case 'U': return bytes[0].toString();
+        case 'i': return view.getInt8(0).toString();
+        case 'I': return view.getInt16(0, false).toString();
+        case 'l': return view.getInt32(0, false).toString();
+        case 'L': return view.getBigInt64(0, false).toString();
+        case 'd': {
+            const v = view.getFloat32(0, false);
+            return Number.isFinite(v) ? (Number.isInteger(v) ? v.toString() : parseFloat(v.toPrecision(7)).toString()) : v.toString();
+        }
+        case 'D': return view.getFloat64(0, false).toString();
+        case 'C': return "'" + String.fromCharCode(bytes[0]) + "'";
+        case 'S': case 'H': return '"' + new TextDecoder().decode(bytes) + '"';
+        default: return null;
+    }
+}
+
+function hideByteTooltip() {
+    document.getElementById('byteTooltip').style.display = 'none';
+}
+
+// cols: array of {key, val} objects rendered left-to-right with dividers between them.
+function showByteTooltip(selRect, cols) {
+    const tip = document.getElementById('byteTooltip');
+    const col = (key, val) =>
+        `<div class="tip-col"><span class="tip-key">${key}</span><span class="tip-val">${val}</span></div>`;
+    const div = '<div class="tip-div"></div>';
+    document.getElementById('tipRow').innerHTML =
+        cols.map((c, i) => (i > 0 ? div : '') + col(c.key, c.val)).join('');
+
+    tip.style.display = 'block';
+    const cx = selRect.left + selRect.width / 2;
+    const tipW = tip.offsetWidth;
+    const clampedLeft = Math.max(6, Math.min(cx - tipW / 2, window.innerWidth - tipW - 6));
+    tip.style.left = clampedLeft + 'px';
+    tip.style.top  = (selRect.top - tip.offsetHeight - 10) + 'px';
+    // Arrow points at the true center of the selection even when tooltip is clamped
+    tip.querySelector('.tip-arrow').style.left = Math.round(cx - clampedLeft) + 'px';
+}
+
+document.addEventListener('selectionchange', () => {
+    if (!document.getElementById('colorToggle').checked) return;
+
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) { hideByteTooltip(); return; }
+
+    const hexInput = document.getElementById('hexInput');
+    if (!hexInput.contains(sel.anchorNode)) { hideByteTooltip(); return; }
+
+    const range = sel.getRangeAt(0);
+    const spans = hexInput.querySelectorAll('[data-bi]');
+    const selectedIndices = [];
+
+    for (const span of spans) {
+        const sr = document.createRange();
+        sr.selectNode(span);
+        // Full-containment check: the span must be entirely inside the selection.
+        // compareBoundaryPoints(START_TO_START, sr) <= 0  →  range.start <= span.start
+        // compareBoundaryPoints(END_TO_END,     sr) >= 0  →  range.end   >= span.end
+        const rangeStartsBeforeOrAtSpan = range.compareBoundaryPoints(Range.START_TO_START, sr) <= 0;
+        const rangeEndsAfterOrAtSpan    = range.compareBoundaryPoints(Range.END_TO_END,     sr) >= 0;
+        if (rangeStartsBeforeOrAtSpan && rangeEndsAfterOrAtSpan)
+            selectedIndices.push(parseInt(span.dataset.bi));
+    }
+
+    if (selectedIndices.length === 0) { hideByteTooltip(); return; }
+
+    const ann = window._ubAnn;
+    if (!ann) { hideByteTooltip(); return; }
+
+    const firstRole = ann.roles[selectedIndices[0]];
+
+    // ── Marker tooltip (single byte only) ────────────────────────────────────
+    if (firstRole === 'marker' && selectedIndices.length === 1) {
+        const bi = selectedIndices[0];
+        const markerChar = String.fromCharCode(ann.bytes[bi]);
+        const typeLabel  = TYPE_LABELS[markerChar] || markerChar;
+        showByteTooltip(range.getBoundingClientRect(), [
+            { key: 'Marker', val: markerChar },
+            { key: 'Type',   val: typeLabel  }
+        ]);
+        return;
+    }
+
+    // ── Data tooltip ─────────────────────────────────────────────────────────
+    if (!selectedIndices.every(i => ann.roles[i] === 'data')) { hideByteTooltip(); return; }
+
+    // All selected bytes must share the same type marker
+    const typeChar = ann.typeMarkers[selectedIndices[0]];
+    if (!typeChar || !selectedIndices.every(i => ann.typeMarkers[i] === typeChar)) { hideByteTooltip(); return; }
+
+    const selectedBytes = new Uint8Array(selectedIndices.map(i => ann.bytes[i]));
+    const decoded = decodeDataBytes(selectedBytes, typeChar);
+    if (decoded === null) { hideByteTooltip(); return; }
+
+    showByteTooltip(range.getBoundingClientRect(), [
+        { key: 'Type',  val: TYPE_LABELS[typeChar] || typeChar },
+        { key: 'Value', val: decoded },
+        { key: 'Bytes', val: selectedIndices.length }
+    ]);
+});
+</script>
 
 </body>
 </html>
