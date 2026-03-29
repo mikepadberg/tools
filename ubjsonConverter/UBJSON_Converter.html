@@ -6,7 +6,8 @@
     <style>
         :root { --primary: #007AFF; --bg: #f4f7f6; }
         body { font-family: -apple-system, sans-serif; padding: 20px; background: var(--bg); color: #333; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .page-wrap { max-width: 900px; margin: auto; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         /* Shared appearance for hex box and JSON textarea */
         .hex-box, textarea {
             width: 100%; height: 180px; font-family: 'Courier New', monospace;
@@ -41,7 +42,7 @@
         .legend-item { display: flex; align-items: center; gap: 5px; }
         .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
         /* Collapsible reference cards */
-        .ref-card { max-width: 900px; margin: 20px auto 0; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; }
+        .ref-card { margin-top: 20px; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; }
         .ref-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 30px; cursor: pointer; user-select: none; }
         .ref-header:hover { background: #f8f9fa; }
         .ref-title { font-size: 16px; font-weight: 700; color: #333; margin: 0; }
@@ -64,6 +65,7 @@
 </head>
 <body>
 
+<div class="page-wrap">
 <div class="container">
     <h2>UBJSON Converter</h2>
     <div id="err" class="error"></div>
@@ -705,29 +707,29 @@ function toUB() {
     <div class="ref-body">
         <table class="ref-table">
             <thead>
-                <tr><th>Type</th><th>Marker</th><th>Hex</th><th>Size</th><th>Description</th></tr>
+                <tr><th>Type</th><th>Marker</th><th>Hex</th><th>Description</th></tr>
             </thead>
             <tbody>
-                <tr><td>null</td>          <td><span class="marker-pill">Z</span></td><td class="hex-cell">0x5A</td><td>1 byte</td>  <td>JSON null value</td></tr>
-                <tr><td>no-op</td>         <td><span class="marker-pill">N</span></td><td class="hex-cell">0x4E</td><td>1 byte</td>  <td>No-operation / keep-alive signal, no value</td></tr>
-                <tr><td>true</td>          <td><span class="marker-pill">T</span></td><td class="hex-cell">0x54</td><td>1 byte</td>  <td>Boolean true</td></tr>
-                <tr><td>false</td>         <td><span class="marker-pill">F</span></td><td class="hex-cell">0x46</td><td>1 byte</td>  <td>Boolean false</td></tr>
-                <tr><td>int8</td>          <td><span class="marker-pill">i</span></td><td class="hex-cell">0x69</td><td>2 bytes</td> <td>Signed 8-bit integer &nbsp;(−128 to 127)</td></tr>
-                <tr><td>uint8</td>         <td><span class="marker-pill">U</span></td><td class="hex-cell">0x55</td><td>2 bytes</td> <td>Unsigned 8-bit integer &nbsp;(0 to 255)</td></tr>
-                <tr><td>int16</td>         <td><span class="marker-pill">I</span></td><td class="hex-cell">0x49</td><td>3 bytes</td> <td>Signed 16-bit integer &nbsp;(−32,768 to 32,767)</td></tr>
-                <tr><td>int32</td>         <td><span class="marker-pill">l</span></td><td class="hex-cell">0x6C</td><td>5 bytes</td> <td>Signed 32-bit integer &nbsp;(−2,147,483,648 to 2,147,483,647)</td></tr>
-                <tr><td>int64</td>         <td><span class="marker-pill">L</span></td><td class="hex-cell">0x4C</td><td>9 bytes</td> <td>Signed 64-bit integer &nbsp;(−2⁶³ to 2⁶³−1)</td></tr>
-                <tr><td>float32</td>       <td><span class="marker-pill">d</span></td><td class="hex-cell">0x64</td><td>5 bytes</td> <td>IEEE 754 single-precision float</td></tr>
-                <tr><td>float64</td>       <td><span class="marker-pill">D</span></td><td class="hex-cell">0x44</td><td>9 bytes</td> <td>IEEE 754 double-precision float</td></tr>
-                <tr><td>high-precision</td><td><span class="marker-pill">H</span></td><td class="hex-cell">0x48</td><td>variable</td><td>Arbitrary-precision number encoded as a UTF-8 string</td></tr>
-                <tr><td>char</td>          <td><span class="marker-pill">C</span></td><td class="hex-cell">0x43</td><td>2 bytes</td> <td>Single printable ASCII character (0–127)</td></tr>
-                <tr><td>string</td>        <td><span class="marker-pill">S</span></td><td class="hex-cell">0x53</td><td>variable</td><td>UTF-8 string: marker + typed-integer length + bytes</td></tr>
-                <tr><td>array start</td>   <td><span class="marker-pill">[</span></td><td class="hex-cell">0x5B</td><td>—</td>       <td>Begin array container</td></tr>
-                <tr><td>array end</td>     <td><span class="marker-pill">]</span></td><td class="hex-cell">0x5D</td><td>—</td>       <td>End array container (omitted when # count used)</td></tr>
-                <tr><td>object start</td>  <td><span class="marker-pill">{</span></td><td class="hex-cell">0x7B</td><td>—</td>       <td>Begin object container</td></tr>
-                <tr><td>object end</td>    <td><span class="marker-pill">}</span></td><td class="hex-cell">0x7D</td><td>—</td>       <td>End object container (omitted when # count used)</td></tr>
-                <tr><td>type (optimized)</td><td><span class="marker-pill">$</span></td><td class="hex-cell">0x24</td><td>—</td>     <td>Declares a single shared type for all container elements</td></tr>
-                <tr><td>count (optimized)</td><td><span class="marker-pill">#</span></td><td class="hex-cell">0x23</td><td>—</td>    <td>Declares the element count; suppresses the end marker</td></tr>
+                <tr><td>null</td>          <td><span class="marker-pill">Z</span></td><td class="hex-cell">0x5A</td><td>JSON null value</td></tr>
+                <tr><td>no-op</td>         <td><span class="marker-pill">N</span></td><td class="hex-cell">0x4E</td><td>No-operation / keep-alive signal, no value</td></tr>
+                <tr><td>true</td>          <td><span class="marker-pill">T</span></td><td class="hex-cell">0x54</td><td>Boolean true</td></tr>
+                <tr><td>false</td>         <td><span class="marker-pill">F</span></td><td class="hex-cell">0x46</td><td>Boolean false</td></tr>
+                <tr><td>int8</td>          <td><span class="marker-pill">i</span></td><td class="hex-cell">0x69</td><td>Signed 8-bit integer &nbsp;(−128 to 127)</td></tr>
+                <tr><td>uint8</td>         <td><span class="marker-pill">U</span></td><td class="hex-cell">0x55</td><td>Unsigned 8-bit integer &nbsp;(0 to 255)</td></tr>
+                <tr><td>int16</td>         <td><span class="marker-pill">I</span></td><td class="hex-cell">0x49</td><td>Signed 16-bit integer &nbsp;(−32,768 to 32,767)</td></tr>
+                <tr><td>int32</td>         <td><span class="marker-pill">l</span></td><td class="hex-cell">0x6C</td><td>Signed 32-bit integer &nbsp;(−2,147,483,648 to 2,147,483,647)</td></tr>
+                <tr><td>int64</td>         <td><span class="marker-pill">L</span></td><td class="hex-cell">0x4C</td><td>Signed 64-bit integer &nbsp;(−2⁶³ to 2⁶³−1)</td></tr>
+                <tr><td>float32</td>       <td><span class="marker-pill">d</span></td><td class="hex-cell">0x64</td><td>IEEE 754 single-precision float</td></tr>
+                <tr><td>float64</td>       <td><span class="marker-pill">D</span></td><td class="hex-cell">0x44</td><td>IEEE 754 double-precision float</td></tr>
+                <tr><td>high-precision</td><td><span class="marker-pill">H</span></td><td class="hex-cell">0x48</td><td>Arbitrary-precision number encoded as a UTF-8 string</td></tr>
+                <tr><td>char</td>          <td><span class="marker-pill">C</span></td><td class="hex-cell">0x43</td><td>Single printable ASCII character (0–127)</td></tr>
+                <tr><td>string</td>        <td><span class="marker-pill">S</span></td><td class="hex-cell">0x53</td><td>UTF-8 string: marker + typed-integer length + bytes</td></tr>
+                <tr><td>array start</td>   <td><span class="marker-pill">[</span></td><td class="hex-cell">0x5B</td><td>Begin array container</td></tr>
+                <tr><td>array end</td>     <td><span class="marker-pill">]</span></td><td class="hex-cell">0x5D</td><td>End array container (omitted when # count used)</td></tr>
+                <tr><td>object start</td>  <td><span class="marker-pill">{</span></td><td class="hex-cell">0x7B</td><td>Begin object container</td></tr>
+                <tr><td>object end</td>    <td><span class="marker-pill">}</span></td><td class="hex-cell">0x7D</td><td>End object container (omitted when # count used)</td></tr>
+                <tr><td>type (optimized)</td><td><span class="marker-pill">$</span></td><td class="hex-cell">0x24</td><td>Declares a single shared type for all container elements</td></tr>
+                <tr><td>count (optimized)</td><td><span class="marker-pill">#</span></td><td class="hex-cell">0x23</td><td>Declares the element count; suppresses the end marker</td></tr>
             </tbody>
         </table>
     </div>
@@ -778,6 +780,8 @@ function toggleCard(id) {
     }
 })();
 </script>
+
+</div><!-- /page-wrap -->
 
 </body>
 </html>
