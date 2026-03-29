@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UBJSON Converter</title>
+    <style>
+        :root { --primary: #007AFF; --bg: #f4f7f6; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; background: var(--bg); color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        /* Shared appearance for hex box and JSON textarea */
+        .hex-box, textarea {
+            width: 100%; height: 180px; font-family: 'Courier New', monospace;
+            padding: 12px; border: 1px solid #ccc; border-radius: 6px;
+            box-sizing: border-box; font-size: 14px; display: block;
+        }
+        textarea { resize: vertical; }
+        .hex-box {
+            overflow-y: auto; overflow-x: hidden; white-space: pre-wrap;
+            word-break: break-all; outline: none; resize: vertical;
+            line-height: 1.6; color: #333; cursor: text;
+        }
+        .hex-box:focus { border-color: #007AFF; box-shadow: 0 0 0 2px rgba(0,122,255,0.15); }
+        .hex-box[data-placeholder]:empty::before {
+            content: attr(data-placeholder); color: #aaa; pointer-events: none;
+        }
+        .textarea-wrap { margin-bottom: 20px; }
+        .textarea-inner { position: relative; }
+        .byte-count { position: absolute; bottom: 8px; right: 20px; font-size: 12px; color: #bbb; pointer-events: none; user-select: none; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .label-row label { font-weight: 600; }
+        .copy-btn { padding: 4px 12px; font-size: 13px; font-weight: 600; cursor: pointer; background: #e9ecef; color: #333; border: 1px solid #ccc; border-radius: 5px; flex: none; }
+        .copy-btn:hover { background: #d0d3d6; }
+        .copy-btn.copied { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .buttons { display: flex; gap: 15px; margin-bottom: 20px; }
+        button { flex: 1; padding: 14px; cursor: pointer; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .error { color: #d9534f; background: #f2dede; padding: 15px; border-radius: 6px; display: none; margin-bottom: 20px; border-left: 5px solid #d9534f; }
+        .color-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 6px; font-size: 13px; color: #555; }
+        .color-row input[type=checkbox] { cursor: pointer; width: 14px; height: 14px; }
+        .color-legend { display: flex; gap: 18px; font-size: 12px; }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        /* Collapsible reference cards */
+        .ref-card { max-width: 900px; margin: 20px auto 0; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; }
+        .ref-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 30px; cursor: pointer; user-select: none; }
+        .ref-header:hover { background: #f8f9fa; }
+        .ref-title { font-size: 16px; font-weight: 700; color: #333; margin: 0; }
+        .ref-chevron { font-size: 12px; color: #999; transition: transform 0.2s; }
+        .ref-card.open .ref-chevron { transform: rotate(180deg); }
+        .ref-body { display: none; padding: 0 30px 24px; }
+        .ref-card.open .ref-body { display: block; }
+        /* Reference tables */
+        .ref-table { width: 100%; border-collapse: collapse; font-family: 'Courier New', monospace; font-size: 13px; }
+        .ref-table th { text-align: left; padding: 7px 12px; background: #f4f7f6; color: #555; font-weight: 700; border-bottom: 2px solid #e0e0e0; font-family: -apple-system, sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .ref-table td { padding: 5px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .ref-table tr:last-child td { border-bottom: none; }
+        .ref-table tr:hover td { background: #fafafa; }
+        .marker-pill { display: inline-block; background: #e8f0fe; color: #1a56db; border-radius: 4px; padding: 1px 7px; font-weight: 700; letter-spacing: 0.05em; }
+        .hex-cell { color: #007AFF; }
+        .ascii-table-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 32px; }
+        .ascii-col table { width: 100%; }
+    </style>
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>UBJSON Converter</h2>
+    <div id="err" class="error"></div>
+
+    <div class="textarea-wrap">
+        <div class="label-row">
+            <label>UBJSON Hex Bytes:</label>
+            <button class="copy-btn" onclick="copyHex(this)">Copy</button>
+        </div>
+        <div class="textarea-inner">
+            <div id="hexInput"
+                 class="hex-box"
+                 contenteditable="true"
+                 spellcheck="false"
+                 data-placeholder="e.g. 0x7B, 0x55, 0x01, 0x4D, 0x49, 0x04, 0xD2, 0x7D"
+                 oninput="onHexEdit()"></div>
+            <span id="byteCount" class="byte-count">0 bytes</span>
+        </div>
+    </div>
+
+    <div class="buttons">
+        <button onclick="toJS()">Convert Hex → JSON ↓</button>
+        <button onclick="toUB()" style="background: #6c757d;">Convert JSON → Hex ↑</button>
+        <button onclick="clearAll()" style="background: white; color: #666; border: 1px solid #ccc; flex: 0 0 auto; width: 110px; font-size: 14px;">Clear Fields</button>
+    </div>
+
+    <div class="textarea-wrap">
+        <div class="label-row">
+            <label>JSON:</label>
+            <button class="copy-btn" onclick="copyText('jsonInput', this)">Copy</button>
+        </div>
+        <textarea id="jsonInput" placeholder='e.g. {"M":1234}'></textarea>
+    </div>
+
+    <div class="color-row">
+        <span id="legendRow" class="color-legend" style="display:none">
+            <span class="legend-item"><span class="legend-dot" style="background:#007AFF"></span>Type marker</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#e67e22"></span>Length</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#27ae60"></span>Data</span>
+        </span>
+        Color-coding: <input type="checkbox" id="colorToggle" onchange="onColorToggle()">
+    </div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────
+   DRAFT 12 DECODER
+───────────────────────────────────────────── */
+class UBJSONDecoder {
+    constructor(bytes) {
+        this.data = bytes;
+        this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        this.offset = 0;
+    }
+
+    read() {
+        if (this.offset >= this.data.length) return undefined;
+        const typeByte = this.data[this.offset++];
+        const typeChar = String.fromCharCode(typeByte);
+        switch (typeChar) {
+            case '{': return this.readObject();
+            case '[': return this.readArray();
+            case 'S': return this.readString();
+            case 'N': return this.NOOP;
+            case 'U': return this.data[this.offset++];
+            case 'i': return this.view.getInt8(this.offset++);
+            case 'I': { let v = this.view.getInt16(this.offset, false); this.offset += 2; return v; }
+            case 'l': { let v = this.view.getInt32(this.offset, false); this.offset += 4; return v; }
+            case 'L': {
+                const big = this.view.getBigInt64(this.offset, false); this.offset += 8;
+                const n = Number(big);
+                return Number.isSafeInteger(n) ? n : big.toString();
+            }
+            case 'd': { let v = this.view.getFloat32(this.offset, false); this.offset += 4; return v; }
+            case 'D': { let v = this.view.getFloat64(this.offset, false); this.offset += 8; return v; }
+            case 'C': return String.fromCharCode(this.data[this.offset++]);
+            case 'H': return this.readString();
+            case 'T': return true;
+            case 'F': return false;
+            case 'Z': return null;
+            default:
+                throw new Error(`Unknown UBJSON type marker: 0x${typeByte.toString(16).padStart(2,'0')} ('${typeChar}') at offset ${this.offset-1}`);
+        }
+    }
+
+    get NOOP() { return UBJSONDecoder.NOOP; }
+    static get NOOP() { if (!this._noop) this._noop = Object.freeze({__ubjson_noop__: true}); return this._noop; }
+
+    readString() {
+        const lenRaw = this.read();
+        // L-encoded lengths outside Number.MAX_SAFE_INTEGER come back as strings
+        const len = typeof lenRaw === 'string' ? parseInt(lenRaw, 10) : lenRaw;
+        if (typeof len !== 'number' || !Number.isFinite(len) || len < 0)
+            throw new Error("Expected numeric length for string");
+        const strBytes = this.data.slice(this.offset, this.offset + len);
+        this.offset += len;
+        return new TextDecoder().decode(strBytes);
+    }
+
+    // Read a typed value whose type marker is already known (optimized container format).
+    // The type byte has already been consumed by the caller; we only read the payload here.
+    readTypedValue(typeChar) {
+        switch (typeChar) {
+            case 'U': return this.data[this.offset++];
+            case 'i': return this.view.getInt8(this.offset++);
+            case 'I': { let v = this.view.getInt16(this.offset, false); this.offset += 2; return v; }
+            case 'l': { let v = this.view.getInt32(this.offset, false); this.offset += 4; return v; }
+            case 'L': {
+                const big = this.view.getBigInt64(this.offset, false); this.offset += 8;
+                const n = Number(big);
+                return Number.isSafeInteger(n) ? n : big.toString();
+            }
+            case 'd': { let v = this.view.getFloat32(this.offset, false); this.offset += 4; return v; }
+            case 'D': { let v = this.view.getFloat64(this.offset, false); this.offset += 8; return v; }
+            case 'C': return String.fromCharCode(this.data[this.offset++]);
+            case 'S': case 'H': return this.readString();
+            case 'T': return true;
+            case 'F': return false;
+            case 'Z': return null;
+            case 'N': return this.NOOP;
+            case '[': return this.readArray();
+            case '{': return this.readObject();
+            default: throw new Error(`Unknown type in strongly-typed container: '${typeChar}'`);
+        }
+    }
+
+    readObject() {
+        const obj = {};
+        let fixedType = null;
+        let count = -1; // -1 = streaming (terminated by '}')
+
+        // Optimized format: optional '$' type specifier
+        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '$') {
+            this.offset++; // consume '$'
+            fixedType = String.fromCharCode(this.data[this.offset++]);
+        }
+        // Optimized format: optional '#' count specifier
+        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '#') {
+            this.offset++; // consume '#'
+            const countRaw = this.read();
+            count = typeof countRaw === 'string' ? parseInt(countRaw, 10) : countRaw;
+        }
+
+        // Null/no-op/boolean typed objects: body contains only keys, values are implied
+        const NO_PAYLOAD = new Set(['Z', 'N', 'T', 'F']);
+        const impliedValue = fixedType && NO_PAYLOAD.has(fixedType);
+
+        const readEntry = () => {
+            const key = this.readString();
+            let val;
+            if (impliedValue) {
+                val = fixedType === 'T' ? true : fixedType === 'F' ? false
+                    : fixedType === 'N' ? this.NOOP : null;
+            } else if (fixedType) {
+                val = this.readTypedValue(fixedType);
+            } else {
+                val = this.read();
+            }
+            if (val !== UBJSONDecoder.NOOP) obj[key] = val;
+        };
+
+        if (count >= 0) {
+            for (let i = 0; i < count; i++) readEntry();
+        } else {
+            while (this.offset < this.data.length) {
+                if (String.fromCharCode(this.data[this.offset]) === '}') { this.offset++; break; }
+                readEntry();
+            }
+        }
+        return obj;
+    }
+
+    readArray() {
+        const arr = [];
+        let fixedType = null;
+        let count = -1; // -1 = streaming (terminated by ']')
+
+        // Optimized format: optional '$' type specifier
+        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '$') {
+            this.offset++; // consume '$'
+            fixedType = String.fromCharCode(this.data[this.offset++]);
+        }
+        // Optimized format: optional '#' count specifier
+        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '#') {
+            this.offset++; // consume '#'
+            const countRaw = this.read();
+            count = typeof countRaw === 'string' ? parseInt(countRaw, 10) : countRaw;
+        }
+
+        if (count >= 0) {
+            // Counted container: no end marker in stream
+            for (let i = 0; i < count; i++) {
+                const val = fixedType ? this.readTypedValue(fixedType) : this.read();
+                if (val !== UBJSONDecoder.NOOP) arr.push(val);
+            }
+        } else {
+            // Streaming container: read until ']'
+            while (this.offset < this.data.length) {
+                if (String.fromCharCode(this.data[this.offset]) === ']') { this.offset++; break; }
+                const val = this.read();
+                if (val !== UBJSONDecoder.NOOP) arr.push(val);
+            }
+        }
+        return arr;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   DRAFT 12 ANNOTATOR
+   Mirrors the decoder but records the role of
+   every byte: 'marker' | 'length' | 'data'
+───────────────────────────────────────────── */
+class UBJSONAnnotator {
+    constructor(bytes) {
+        this.bytes = bytes;
+        this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        this.offset = 0;
+        this.roles = new Array(bytes.length).fill('data');
+    }
+
+    mark(start, end, role) {
+        for (let i = start; i < end && i < this.roles.length; i++) this.roles[i] = role;
+    }
+
+    annotate() {
+        try { this.annotateValue(); } catch(e) { /* partial annotation is fine */ }
+        return this.roles;
+    }
+
+    // Reads a typed integer used as a length prefix.
+    // The type byte itself (U/i/I/l) is always a 'marker'; the value bytes get `role`.
+    annotateIntAs(role) {
+        if (this.offset >= this.bytes.length) return 0;
+        const idx = this.offset;
+        const typeChar = String.fromCharCode(this.bytes[this.offset++]);
+        this.mark(idx, idx + 1, 'marker'); // the U/i/I/l byte is always a type marker
+        let val = 0;
+        switch (typeChar) {
+            case 'U': this.mark(this.offset, this.offset + 1, role); val = this.bytes[this.offset++]; break;
+            case 'i': this.mark(this.offset, this.offset + 1, role); val = this.view.getInt8(this.offset++); break;
+            case 'I': this.mark(this.offset, this.offset + 2, role); val = this.view.getInt16(this.offset, false); this.offset += 2; break;
+            case 'l': this.mark(this.offset, this.offset + 4, role); val = this.view.getInt32(this.offset, false); this.offset += 4; break;
+        }
+        return val;
+    }
+
+    // Marks the length bytes as 'length' and the payload bytes as 'data'
+    annotateString() {
+        const len = this.annotateIntAs('length');
+        this.mark(this.offset, this.offset + len, 'data');
+        this.offset += len;
+    }
+
+    annotateValue() {
+        if (this.offset >= this.bytes.length) return;
+        const idx = this.offset;
+        const typeByte = this.bytes[this.offset++];
+        const typeChar = String.fromCharCode(typeByte);
+        this.mark(idx, idx + 1, 'marker');
+
+        switch (typeChar) {
+            case '{': this.annotateObject(); break;
+            case '[': this.annotateArray(); break;
+            case 'S': case 'H': this.annotateString(); break;
+            case 'N': case 'T': case 'F': case 'Z': break;
+            case 'U': case 'i': case 'C':
+                this.mark(this.offset, this.offset + 1, 'data'); this.offset++; break;
+            case 'I':
+                this.mark(this.offset, this.offset + 2, 'data'); this.offset += 2; break;
+            case 'l': case 'd':
+                this.mark(this.offset, this.offset + 4, 'data'); this.offset += 4; break;
+            case 'L': case 'D':
+                this.mark(this.offset, this.offset + 8, 'data'); this.offset += 8; break;
+        }
+    }
+
+    annotateObject() {
+        let fixedType = null;
+        let count = -1;
+
+        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '$') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '$' marker
+            this.mark(this.offset, this.offset + 1, 'marker'); // the type byte itself is a marker
+            fixedType = String.fromCharCode(this.bytes[this.offset++]);
+        }
+        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '#') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '#' marker
+            count = this.annotateIntAs('length');
+        }
+
+        const NO_PAYLOAD = new Set(['Z', 'N', 'T', 'F']);
+        const impliedValue = fixedType && NO_PAYLOAD.has(fixedType);
+
+        const annotateEntry = () => {
+            this.annotateString(); // naked key
+            if (!impliedValue) {
+                if (fixedType) this.annotateTypedValue(fixedType);
+                else this.annotateValue();
+            }
+            // impliedValue: no value bytes in stream, nothing to annotate
+        };
+
+        if (count >= 0) {
+            for (let i = 0; i < count; i++) annotateEntry();
+        } else {
+            while (this.offset < this.bytes.length) {
+                if (String.fromCharCode(this.bytes[this.offset]) === '}') {
+                    this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; break;
+                }
+                annotateEntry();
+            }
+        }
+    }
+
+    // Annotate the payload bytes of a known-typed value (optimized container format).
+    // The type marker byte has already been annotated by the caller.
+    annotateTypedValue(typeChar) {
+        switch (typeChar) {
+            case 'U': case 'i': case 'C':
+                this.mark(this.offset, this.offset + 1, 'data'); this.offset++; break;
+            case 'I':
+                this.mark(this.offset, this.offset + 2, 'data'); this.offset += 2; break;
+            case 'l': case 'd':
+                this.mark(this.offset, this.offset + 4, 'data'); this.offset += 4; break;
+            case 'L': case 'D':
+                this.mark(this.offset, this.offset + 8, 'data'); this.offset += 8; break;
+            case 'S': case 'H': this.annotateString(); break;
+            case 'T': case 'F': case 'Z': case 'N': break; // no payload bytes
+            case '[': this.annotateArray(); break;
+            case '{': this.annotateObject(); break;
+        }
+    }
+
+    annotateArray() {
+        let fixedType = null;
+        let count = -1;
+
+        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '$') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '$' marker
+            this.mark(this.offset, this.offset + 1, 'marker'); // the type byte itself is a marker
+            fixedType = String.fromCharCode(this.bytes[this.offset++]);
+        }
+        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '#') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '#' marker
+            count = this.annotateIntAs('length'); // count value bytes are treated as 'length'
+        }
+
+        if (count >= 0) {
+            for (let i = 0; i < count; i++) {
+                if (fixedType) this.annotateTypedValue(fixedType);
+                else this.annotateValue();
+            }
+        } else {
+            while (this.offset < this.bytes.length) {
+                if (String.fromCharCode(this.bytes[this.offset]) === ']') {
+                    this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; break;
+                }
+                this.annotateValue();
+            }
+        }
+    }
+}
+
+/* ─────────────────────────────────────────────
+   DRAFT 12 ENCODER
+───────────────────────────────────────────── */
+class UBJSONEncoder {
+    constructor() { this.buf = []; }
+
+    write(val, isKey = false) {
+        if (typeof val === 'string') {
+            if (!isKey) this.buf.push('S'.charCodeAt(0));
+            this.writeInteger(val.length);
+            new TextEncoder().encode(val).forEach(b => this.buf.push(b));
+        } else if (typeof val === 'number') {
+            if (!Number.isInteger(val)) {
+                this.buf.push('D'.charCodeAt(0));
+                const view = new DataView(new ArrayBuffer(8));
+                view.setFloat64(0, val, false);
+                new Uint8Array(view.buffer).forEach(b => this.buf.push(b));
+            } else {
+                this.writeInteger(val);
+            }
+        } else if (val === null) {
+            this.buf.push('Z'.charCodeAt(0));
+        } else if (typeof val === 'boolean') {
+            this.buf.push(val ? 'T'.charCodeAt(0) : 'F'.charCodeAt(0));
+        } else if (Array.isArray(val)) {
+            // Use optimized format for integer arrays: [$][type][#][count][...payloads...]
+            if (val.length > 0 && val.every(v => typeof v === 'number' && Number.isInteger(v))) {
+                const typeChar = this.pickIntegerType(val);
+                this.buf.push('['.charCodeAt(0));
+                this.buf.push('$'.charCodeAt(0));
+                this.buf.push(typeChar.charCodeAt(0));
+                this.buf.push('#'.charCodeAt(0));
+                this.writeInteger(val.length); // count — type marker + value
+                val.forEach(item => this.writeIntPayload(item, typeChar));
+                // No end marker: count was specified
+            } else {
+                this.buf.push('['.charCodeAt(0));
+                val.forEach(item => this.write(item));
+                this.buf.push(']'.charCodeAt(0));
+            }
+        } else if (typeof val === 'object') {
+            this.buf.push('{'.charCodeAt(0));
+            for (let k in val) { this.write(k, true); this.write(val[k]); }
+            this.buf.push('}'.charCodeAt(0));
+        }
+    }
+
+    writeInteger(n) {
+        if (n >= 0 && n <= 127) {
+            this.buf.push('U'.charCodeAt(0)); this.buf.push(n);
+        } else if (n >= -128 && n < 0) {
+            this.buf.push('i'.charCodeAt(0)); this.buf.push(n & 0xFF);
+        } else if (n >= 128 && n <= 255) {
+            this.buf.push('U'.charCodeAt(0)); this.buf.push(n);
+        } else if (n >= -32768 && n <= 32767) {
+            this.buf.push('I'.charCodeAt(0));
+            const v = new DataView(new ArrayBuffer(2)); v.setInt16(0, n, false);
+            new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
+        } else if (n >= -2147483648 && n <= 2147483647) {
+            this.buf.push('l'.charCodeAt(0));
+            const v = new DataView(new ArrayBuffer(4)); v.setInt32(0, n, false);
+            new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
+        } else {
+            this.buf.push('L'.charCodeAt(0));
+            const v = new DataView(new ArrayBuffer(8)); v.setBigInt64(0, BigInt(n), false);
+            new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
+        }
+    }
+
+    // Choose the smallest integer type marker that fits every value in the array
+    pickIntegerType(values) {
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        if (min >= 0 && max <= 255)           return 'U'; // uint8
+        if (min >= -128 && max <= 127)         return 'i'; // int8
+        if (min >= -32768 && max <= 32767)     return 'I'; // int16
+        if (min >= -2147483648 && max <= 2147483647) return 'l'; // int32
+        return 'L';                                        // int64
+    }
+
+    // Write the raw payload bytes for an integer of known type — no type marker
+    writeIntPayload(n, typeChar) {
+        switch (typeChar) {
+            case 'U': this.buf.push(n & 0xFF); break;
+            case 'i': this.buf.push(n & 0xFF); break;
+            case 'I': {
+                const v = new DataView(new ArrayBuffer(2));
+                v.setInt16(0, n, false);
+                new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
+                break;
+            }
+            case 'l': {
+                const v = new DataView(new ArrayBuffer(4));
+                v.setInt32(0, n, false);
+                new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
+                break;
+            }
+            case 'L': {
+                const v = new DataView(new ArrayBuffer(8));
+                v.setBigInt64(0, BigInt(n), false);
+                new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
+                break;
+            }
+        }
+    }
+
+    getBytes() { return new Uint8Array(this.buf); }
+    getHex() { return this.buf.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(', '); }
+}
+
+/* ─────────────────────────────────────────────
+   HEX BOX HELPERS
+───────────────────────────────────────────── */
+const ROLE_COLORS = { marker: '#007AFF', length: '#e67e22', data: '#27ae60' };
+
+function getHexText() {
+    return document.getElementById('hexInput').innerText;
+}
+
+function setHexPlain(text) {
+    document.getElementById('hexInput').textContent = text;
+}
+
+function setHexColored(bytes, roles) {
+    const parts = Array.from(bytes).map((b, i) => {
+        const hex = '0x' + b.toString(16).toUpperCase().padStart(2, '0');
+        // Only render 0x7B and 0x7D as black if their role is 'marker' (i.e., structural)
+        const color = ((b === 0x7B || b === 0x7D) && roles[i] === 'marker')
+            ? '#333'
+            : (ROLE_COLORS[roles[i]] || '#333');
+        return `<span style="color:${color}">${hex}</span>`;
+    });
+    document.getElementById('hexInput').innerHTML =
+        parts.join('<span style="color:#999">, </span>');
+}
+
+// Strip HTML on paste — only accept plain text
+document.addEventListener('DOMContentLoaded', () => {
+    // Clear both input boxes and reset color-coding checkbox to off on page load
+    document.getElementById('hexInput').textContent = '';
+    document.getElementById('jsonInput').value = '';
+    document.getElementById('err').style.display = 'none';
+    document.getElementById('colorToggle').checked = false;
+    document.getElementById('legendRow').style.display = 'none';
+    updateByteCount();
+
+    document.getElementById('hexInput').addEventListener('paste', e => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        document.execCommand('insertText', false, text);
+    });
+});
+
+// Reset all colour spans to black as soon as the user edits, without changing checkbox state
+function onHexEdit() {
+    const box = document.getElementById('hexInput');
+    // Only strip spans if coloured spans are present, to avoid cursor-jump on plain typing
+    if (box.querySelector('span[style]')) {
+        const plain = box.innerText;
+        box.textContent = plain;
+    }
+    updateByteCount();
+}
+
+function updateByteCount() {
+    const matches = getHexText().match(/(?:0x)?[0-9a-fA-F]{2}/gi);
+    const count = matches ? matches.length : 0;
+    document.getElementById('byteCount').textContent = count === 1 ? '1 byte' : `${count} bytes`;
+}
+
+function onColorToggle() {
+    const colorToggle = document.getElementById('colorToggle');
+    document.getElementById('legendRow').style.display = colorToggle.checked ? 'flex' : 'none';
+    // Re-apply coloring or plain rendering to the hex box
+    const hexText = getHexText();
+    const matches = hexText.match(/(?:0x)?[0-9a-fA-F]{2}/gi);
+    if (matches) {
+        const bytes = new Uint8Array(matches.map(h => parseInt(h, 16)));
+        const plainHex = matches.map(b => {
+            const n = parseInt(b, 16);
+            return '0x' + n.toString(16).toUpperCase().padStart(2, '0');
+        }).join(', ');
+        applyColoring(bytes, plainHex);
+    } else {
+        setHexPlain(hexText);
+    }
+}
+
+function parseHexBytes() {
+    const matches = getHexText().match(/(?:0x)?[0-9a-fA-F]{2}/gi);
+    if (!matches) throw new Error("No hex bytes found.");
+    return new Uint8Array(matches.map(h => parseInt(h, 16)));
+}
+
+// If color-coding is on, annotate and render; otherwise ensure plain text
+function applyColoring(bytes, plainFallback) {
+    if (document.getElementById('colorToggle').checked) {
+        const roles = new UBJSONAnnotator(bytes).annotate();
+        setHexColored(bytes, roles);
+    } else {
+        setHexPlain(plainFallback);
+    }
+}
+
+/* ─────────────────────────────────────────────
+   UI ACTIONS
+───────────────────────────────────────────── */
+function copyHex(btn) {
+    const text = getHexText().trim();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    });
+}
+
+function copyText(id, btn) {
+    const text = document.getElementById(id).value;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    });
+}
+
+function clearAll() {
+    document.getElementById('hexInput').textContent = '';
+    document.getElementById('jsonInput').value = '';
+    document.getElementById('err').style.display = 'none';
+    updateByteCount();
+}
+
+function toJS() {
+    document.getElementById('err').style.display = 'none';
+    try {
+        const bytes = parseHexBytes();
+        const result = new UBJSONDecoder(bytes).read();
+        document.getElementById('jsonInput').value = JSON.stringify(result);
+        // Re-normalise the hex to 0x-prefixed format as the canonical plain form
+        const plainHex = Array.from(bytes)
+            .map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(', ');
+        applyColoring(bytes, plainHex);
+        updateByteCount();
+    } catch (e) {
+        const eDiv = document.getElementById('err');
+        eDiv.style.display = 'block';
+        eDiv.innerText = "Error: " + e.message;
+    }
+}
+
+function toUB() {
+    document.getElementById('err').style.display = 'none';
+    try {
+        const json = JSON.parse(document.getElementById('jsonInput').value);
+        const encoder = new UBJSONEncoder();
+        encoder.write(json);
+        const bytes = encoder.getBytes();
+        applyColoring(bytes, encoder.getHex());
+        updateByteCount();
+    } catch (e) {
+        const eDiv = document.getElementById('err');
+        eDiv.style.display = 'block';
+        eDiv.innerText = "Error: " + e.message;
+    }
+}
+</script>
+
+<!-- Type Reference Card -->
+<div class="ref-card" id="typeRefCard">
+    <div class="ref-header" onclick="toggleCard('typeRefCard')">
+        <span class="ref-title">Type Reference</span>
+        <span class="ref-chevron">&#9660;</span>
+    </div>
+    <div class="ref-body">
+        <table class="ref-table">
+            <thead>
+                <tr><th>Type</th><th>Marker</th><th>Hex</th><th>Size</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>null</td>          <td><span class="marker-pill">Z</span></td><td class="hex-cell">0x5A</td><td>1 byte</td>  <td>JSON null value</td></tr>
+                <tr><td>no-op</td>         <td><span class="marker-pill">N</span></td><td class="hex-cell">0x4E</td><td>1 byte</td>  <td>No-operation / keep-alive signal, no value</td></tr>
+                <tr><td>true</td>          <td><span class="marker-pill">T</span></td><td class="hex-cell">0x54</td><td>1 byte</td>  <td>Boolean true</td></tr>
+                <tr><td>false</td>         <td><span class="marker-pill">F</span></td><td class="hex-cell">0x46</td><td>1 byte</td>  <td>Boolean false</td></tr>
+                <tr><td>int8</td>          <td><span class="marker-pill">i</span></td><td class="hex-cell">0x69</td><td>2 bytes</td> <td>Signed 8-bit integer &nbsp;(−128 to 127)</td></tr>
+                <tr><td>uint8</td>         <td><span class="marker-pill">U</span></td><td class="hex-cell">0x55</td><td>2 bytes</td> <td>Unsigned 8-bit integer &nbsp;(0 to 255)</td></tr>
+                <tr><td>int16</td>         <td><span class="marker-pill">I</span></td><td class="hex-cell">0x49</td><td>3 bytes</td> <td>Signed 16-bit integer &nbsp;(−32,768 to 32,767)</td></tr>
+                <tr><td>int32</td>         <td><span class="marker-pill">l</span></td><td class="hex-cell">0x6C</td><td>5 bytes</td> <td>Signed 32-bit integer &nbsp;(−2,147,483,648 to 2,147,483,647)</td></tr>
+                <tr><td>int64</td>         <td><span class="marker-pill">L</span></td><td class="hex-cell">0x4C</td><td>9 bytes</td> <td>Signed 64-bit integer &nbsp;(−2⁶³ to 2⁶³−1)</td></tr>
+                <tr><td>float32</td>       <td><span class="marker-pill">d</span></td><td class="hex-cell">0x64</td><td>5 bytes</td> <td>IEEE 754 single-precision float</td></tr>
+                <tr><td>float64</td>       <td><span class="marker-pill">D</span></td><td class="hex-cell">0x44</td><td>9 bytes</td> <td>IEEE 754 double-precision float</td></tr>
+                <tr><td>high-precision</td><td><span class="marker-pill">H</span></td><td class="hex-cell">0x48</td><td>variable</td><td>Arbitrary-precision number encoded as a UTF-8 string</td></tr>
+                <tr><td>char</td>          <td><span class="marker-pill">C</span></td><td class="hex-cell">0x43</td><td>2 bytes</td> <td>Single printable ASCII character (0–127)</td></tr>
+                <tr><td>string</td>        <td><span class="marker-pill">S</span></td><td class="hex-cell">0x53</td><td>variable</td><td>UTF-8 string: marker + typed-integer length + bytes</td></tr>
+                <tr><td>array start</td>   <td><span class="marker-pill">[</span></td><td class="hex-cell">0x5B</td><td>—</td>       <td>Begin array container</td></tr>
+                <tr><td>array end</td>     <td><span class="marker-pill">]</span></td><td class="hex-cell">0x5D</td><td>—</td>       <td>End array container (omitted when # count used)</td></tr>
+                <tr><td>object start</td>  <td><span class="marker-pill">{</span></td><td class="hex-cell">0x7B</td><td>—</td>       <td>Begin object container</td></tr>
+                <tr><td>object end</td>    <td><span class="marker-pill">}</span></td><td class="hex-cell">0x7D</td><td>—</td>       <td>End object container (omitted when # count used)</td></tr>
+                <tr><td>type (optimized)</td><td><span class="marker-pill">$</span></td><td class="hex-cell">0x24</td><td>—</td>     <td>Declares a single shared type for all container elements</td></tr>
+                <tr><td>count (optimized)</td><td><span class="marker-pill">#</span></td><td class="hex-cell">0x23</td><td>—</td>    <td>Declares the element count; suppresses the end marker</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ASCII Table Card -->
+<div class="ref-card" id="asciiCard">
+    <div class="ref-header" onclick="toggleCard('asciiCard')">
+        <span class="ref-title">ASCII Table</span>
+        <span class="ref-chevron">&#9660;</span>
+    </div>
+    <div class="ref-body">
+        <div class="ascii-table-grid" id="asciiGrid"></div>
+    </div>
+</div>
+
+<script>
+function toggleCard(id) {
+    document.getElementById(id).classList.toggle('open');
+}
+
+/* Build the ASCII table dynamically across 3 equal columns */
+(function buildAsciiTable() {
+    const ROWS_PER_COL = 44; /* 0-127 = 128 values, split across 3 columns (44/44/40) */
+    const labels = {
+        0:'NUL',1:'SOH',2:'STX',3:'ETX',4:'EOT',5:'ENQ',6:'ACK',7:'BEL',
+        8:'BS', 9:'HT', 10:'LF',11:'VT', 12:'FF', 13:'CR', 14:'SO', 15:'SI',
+        16:'DLE',17:'DC1',18:'DC2',19:'DC3',20:'DC4',21:'NAK',22:'SYN',23:'ETB',
+        24:'CAN',25:'EM', 26:'SUB',27:'ESC',28:'FS', 29:'GS', 30:'RS', 31:'US',
+        127:'DEL'
+    };
+    const grid = document.getElementById('asciiGrid');
+    for (let col = 0; col < 3; col++) {
+        const start = col * ROWS_PER_COL;
+        const end   = Math.min(start + ROWS_PER_COL, 128);
+        const div = document.createElement('div');
+        div.className = 'ascii-col';
+        let html = '<table class="ref-table"><thead><tr><th>Dec</th><th>Hex</th><th>ASCII</th></tr></thead><tbody>';
+        for (let c = start; c < end; c++) {
+            const hexVal  = '0x' + c.toString(16).toUpperCase().padStart(2, '0');
+            const display = labels[c] !== undefined ? labels[c]
+                          : (c === 32 ? 'SPC' : String.fromCharCode(c));
+            html += `<tr><td>${c}</td><td class="hex-cell">${hexVal}</td><td>${display}</td></tr>`;
+        }
+        html += '</tbody></table>';
+        div.innerHTML = html;
+        grid.appendChild(div);
+    }
+})();
+</script>
+
+</body>
+</html>
