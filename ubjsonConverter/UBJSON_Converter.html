@@ -299,10 +299,10 @@ class UBJSONAnnotator {
         for (let i = start; i < end && i < this.roles.length; i++) this.roles[i] = role;
     }
 
-    // Mark a range as 'data' and record which type marker governs those bytes.
-    markData(start, end, typeChar) {
+    // Mark a range with a given role and record which type marker governs those bytes.
+    markTyped(start, end, role, typeChar) {
         for (let i = start; i < end && i < this.roles.length; i++) {
-            this.roles[i] = 'data';
+            this.roles[i] = role;
             this.typeMarkers[i] = typeChar;
         }
     }
@@ -313,7 +313,8 @@ class UBJSONAnnotator {
     }
 
     // Reads a typed integer used as a length prefix.
-    // The type byte itself (U/i/I/l) is always a 'marker'; the value bytes get `role`.
+    // The type byte itself (U/i/I/l) is always a 'marker'; the value bytes get `role`
+    // and their integer typeChar recorded in typeMarkers so the tooltip can decode them.
     annotateIntAs(role) {
         if (this.offset >= this.bytes.length) return 0;
         const idx = this.offset;
@@ -321,10 +322,10 @@ class UBJSONAnnotator {
         this.mark(idx, idx + 1, 'marker'); // the U/i/I/l byte is always a type marker
         let val = 0;
         switch (typeChar) {
-            case 'U': this.mark(this.offset, this.offset + 1, role); val = this.bytes[this.offset++]; break;
-            case 'i': this.mark(this.offset, this.offset + 1, role); val = this.view.getInt8(this.offset++); break;
-            case 'I': this.mark(this.offset, this.offset + 2, role); val = this.view.getInt16(this.offset, false); this.offset += 2; break;
-            case 'l': this.mark(this.offset, this.offset + 4, role); val = this.view.getInt32(this.offset, false); this.offset += 4; break;
+            case 'U': this.markTyped(this.offset, this.offset + 1, role, typeChar); val = this.bytes[this.offset++]; break;
+            case 'i': this.markTyped(this.offset, this.offset + 1, role, typeChar); val = this.view.getInt8(this.offset++); break;
+            case 'I': this.markTyped(this.offset, this.offset + 2, role, typeChar); val = this.view.getInt16(this.offset, false); this.offset += 2; break;
+            case 'l': this.markTyped(this.offset, this.offset + 4, role, typeChar); val = this.view.getInt32(this.offset, false); this.offset += 4; break;
         }
         return val;
     }
@@ -332,7 +333,7 @@ class UBJSONAnnotator {
     // Marks the length bytes as 'length' and the payload bytes as 'data'
     annotateString(typeChar = 'S') {
         const len = this.annotateIntAs('length');
-        this.markData(this.offset, this.offset + len, typeChar);
+        this.markTyped(this.offset, this.offset + len, 'data', typeChar);
         this.offset += len;
     }
 
@@ -349,13 +350,13 @@ class UBJSONAnnotator {
             case 'S': case 'H': this.annotateString(typeChar); break;
             case 'N': case 'T': case 'F': case 'Z': break;
             case 'U': case 'i': case 'C':
-                this.markData(this.offset, this.offset + 1, typeChar); this.offset++; break;
+                this.markTyped(this.offset, this.offset + 1, 'data', typeChar); this.offset++; break;
             case 'I':
-                this.markData(this.offset, this.offset + 2, typeChar); this.offset += 2; break;
+                this.markTyped(this.offset, this.offset + 2, 'data', typeChar); this.offset += 2; break;
             case 'l': case 'd':
-                this.markData(this.offset, this.offset + 4, typeChar); this.offset += 4; break;
+                this.markTyped(this.offset, this.offset + 4, 'data', typeChar); this.offset += 4; break;
             case 'L': case 'D':
-                this.markData(this.offset, this.offset + 8, typeChar); this.offset += 8; break;
+                this.markTyped(this.offset, this.offset + 8, 'data', typeChar); this.offset += 8; break;
         }
     }
 
@@ -402,13 +403,13 @@ class UBJSONAnnotator {
     annotateTypedValue(typeChar) {
         switch (typeChar) {
             case 'U': case 'i': case 'C':
-                this.markData(this.offset, this.offset + 1, typeChar); this.offset++; break;
+                this.markTyped(this.offset, this.offset + 1, 'data', typeChar); this.offset++; break;
             case 'I':
-                this.markData(this.offset, this.offset + 2, typeChar); this.offset += 2; break;
+                this.markTyped(this.offset, this.offset + 2, 'data', typeChar); this.offset += 2; break;
             case 'l': case 'd':
-                this.markData(this.offset, this.offset + 4, typeChar); this.offset += 4; break;
+                this.markTyped(this.offset, this.offset + 4, 'data', typeChar); this.offset += 4; break;
             case 'L': case 'D':
-                this.markData(this.offset, this.offset + 8, typeChar); this.offset += 8; break;
+                this.markTyped(this.offset, this.offset + 8, 'data', typeChar); this.offset += 8; break;
             case 'S': case 'H': this.annotateString(typeChar); break;
             case 'T': case 'F': case 'Z': case 'N': break; // no payload bytes
             case '[': this.annotateArray(); break;
@@ -624,6 +625,8 @@ function onColorToggle() {
         window._ubHasConverted = false;
         hideByteTooltip();
         document.getElementById('legendRow').style.display = 'none';
+    } else {
+        document.getElementById('legendRow').style.display = 'flex';
     }
     // Re-apply coloring or plain rendering to the hex box
     const hexText = getHexText();
@@ -829,11 +832,16 @@ function toggleCard(id) {
 /* ─────────────────────────────────────────────
    BYTE INSPECTOR TOOLTIP
    Shows a floating tooltip when the user selects
-   a byte span while color-coding is on.
-   - 'data' spans: shows type + decoded value + byte count
-   - 'marker' spans: shows marker character + type name
-   Partial-character selections are ignored — a span
-   must be fully enclosed by the selection range.
+   byte spans while color-coding is on.
+   - 'marker' (single byte): shows marker char + type name
+   - 'length' (one or more): shows "Length: N"
+   - 'data'  (one or more): shows type + decoded value + byte count
+
+   Containment uses selectNodeContents() so that cursor
+   positions from natural drag and shift-arrow selections
+   (which live inside text nodes) align correctly with the
+   span boundaries. selectNode() would place boundaries
+   outside the element tags, causing mismatches.
 ───────────────────────────────────────────── */
 
 const TYPE_LABELS = {
@@ -845,10 +853,9 @@ const TYPE_LABELS = {
     '$':'type specifier', '#':'count specifier'
 };
 
-// For fixed-size numeric types the entire field must be selected.
 const FIXED_SIZES = { 'U':1, 'i':1, 'C':1, 'I':2, 'l':4, 'd':4, 'L':8, 'D':8 };
 
-function decodeDataBytes(bytes, typeChar) {
+function decodeBytes(bytes, typeChar) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const expected = FIXED_SIZES[typeChar];
     if (expected !== undefined && bytes.length !== expected) return null;
@@ -873,23 +880,39 @@ function hideByteTooltip() {
     document.getElementById('byteTooltip').style.display = 'none';
 }
 
-// cols: array of {key, val} objects rendered left-to-right with dividers between them.
 function showByteTooltip(selRect, cols) {
     const tip = document.getElementById('byteTooltip');
-    const col = (key, val) =>
+    const col  = (key, val) =>
         `<div class="tip-col"><span class="tip-key">${key}</span><span class="tip-val">${val}</span></div>`;
-    const div = '<div class="tip-div"></div>';
+    const div  = '<div class="tip-div"></div>';
     document.getElementById('tipRow').innerHTML =
         cols.map((c, i) => (i > 0 ? div : '') + col(c.key, c.val)).join('');
 
     tip.style.display = 'block';
-    const cx = selRect.left + selRect.width / 2;
-    const tipW = tip.offsetWidth;
+    const cx         = selRect.left + selRect.width / 2;
+    const tipW       = tip.offsetWidth;
+    const tipH       = tip.offsetHeight;
     const clampedLeft = Math.max(6, Math.min(cx - tipW / 2, window.innerWidth - tipW - 6));
     tip.style.left = clampedLeft + 'px';
-    tip.style.top  = (selRect.top - tip.offsetHeight - 10) + 'px';
-    // Arrow points at the true center of the selection even when tooltip is clamped
+    tip.style.top  = (selRect.top - tipH - 10) + 'px';
     tip.querySelector('.tip-arrow').style.left = Math.round(cx - clampedLeft) + 'px';
+}
+
+// Returns sorted byte indices that are *fully* enclosed by `range`.
+// Uses selectNodeContents so the range boundaries align with text-node
+// character positions — exactly where browser cursors land during
+// drags and shift-arrow selections.
+function fullySelectedByteIndices(range, hexInput) {
+    const indices = [];
+    for (const span of hexInput.querySelectorAll('[data-bi]')) {
+        const sr = document.createRange();
+        sr.selectNodeContents(span);
+        // range.start <= span content start  AND  range.end >= span content end
+        if (range.compareBoundaryPoints(Range.START_TO_START, sr) <= 0 &&
+            range.compareBoundaryPoints(Range.END_TO_END,     sr) >= 0)
+            indices.push(parseInt(span.dataset.bi));
+    }
+    return indices;
 }
 
 document.addEventListener('selectionchange', () => {
@@ -901,57 +924,58 @@ document.addEventListener('selectionchange', () => {
     const hexInput = document.getElementById('hexInput');
     if (!hexInput.contains(sel.anchorNode)) { hideByteTooltip(); return; }
 
-    const range = sel.getRangeAt(0);
-    const spans = hexInput.querySelectorAll('[data-bi]');
-    const selectedIndices = [];
+    const range   = sel.getRangeAt(0);
+    const indices = fullySelectedByteIndices(range, hexInput);
 
-    for (const span of spans) {
-        const sr = document.createRange();
-        sr.selectNode(span);
-        // Full-containment check: the span must be entirely inside the selection.
-        // compareBoundaryPoints(START_TO_START, sr) <= 0  →  range.start <= span.start
-        // compareBoundaryPoints(END_TO_END,     sr) >= 0  →  range.end   >= span.end
-        const rangeStartsBeforeOrAtSpan = range.compareBoundaryPoints(Range.START_TO_START, sr) <= 0;
-        const rangeEndsAfterOrAtSpan    = range.compareBoundaryPoints(Range.END_TO_END,     sr) >= 0;
-        if (rangeStartsBeforeOrAtSpan && rangeEndsAfterOrAtSpan)
-            selectedIndices.push(parseInt(span.dataset.bi));
-    }
-
-    if (selectedIndices.length === 0) { hideByteTooltip(); return; }
+    if (indices.length === 0) { hideByteTooltip(); return; }
 
     const ann = window._ubAnn;
     if (!ann) { hideByteTooltip(); return; }
 
-    const firstRole = ann.roles[selectedIndices[0]];
+    const firstRole = ann.roles[indices[0]];
 
     // ── Marker tooltip (single byte only) ────────────────────────────────────
-    if (firstRole === 'marker' && selectedIndices.length === 1) {
-        const bi = selectedIndices[0];
-        const markerChar = String.fromCharCode(ann.bytes[bi]);
-        const typeLabel  = TYPE_LABELS[markerChar] || markerChar;
+    if (firstRole === 'marker' && indices.length === 1) {
+        const markerChar = String.fromCharCode(ann.bytes[indices[0]]);
         showByteTooltip(range.getBoundingClientRect(), [
             { key: 'Marker', val: markerChar },
-            { key: 'Type',   val: typeLabel  }
+            { key: 'Type',   val: TYPE_LABELS[markerChar] || markerChar }
         ]);
         return;
     }
 
-    // ── Data tooltip ─────────────────────────────────────────────────────────
-    if (!selectedIndices.every(i => ann.roles[i] === 'data')) { hideByteTooltip(); return; }
+    // All remaining cases require a uniform role across all selected bytes.
+    if (!indices.every(i => ann.roles[i] === firstRole)) { hideByteTooltip(); return; }
 
-    // All selected bytes must share the same type marker
-    const typeChar = ann.typeMarkers[selectedIndices[0]];
-    if (!typeChar || !selectedIndices.every(i => ann.typeMarkers[i] === typeChar)) { hideByteTooltip(); return; }
+    // All selected bytes must share the same typeChar entry.
+    const typeChar = ann.typeMarkers[indices[0]];
+    if (!typeChar || !indices.every(i => ann.typeMarkers[i] === typeChar)) { hideByteTooltip(); return; }
 
-    const selectedBytes = new Uint8Array(selectedIndices.map(i => ann.bytes[i]));
-    const decoded = decodeDataBytes(selectedBytes, typeChar);
-    if (decoded === null) { hideByteTooltip(); return; }
+    const selectedBytes = new Uint8Array(indices.map(i => ann.bytes[i]));
 
-    showByteTooltip(range.getBoundingClientRect(), [
-        { key: 'Type',  val: TYPE_LABELS[typeChar] || typeChar },
-        { key: 'Value', val: decoded },
-        { key: 'Bytes', val: selectedIndices.length }
-    ]);
+    // ── Length tooltip ────────────────────────────────────────────────────────
+    if (firstRole === 'length') {
+        const decoded = decodeBytes(selectedBytes, typeChar);
+        if (decoded === null) { hideByteTooltip(); return; }
+        showByteTooltip(range.getBoundingClientRect(), [
+            { key: 'Length', val: decoded }
+        ]);
+        return;
+    }
+
+    // ── Data tooltip ──────────────────────────────────────────────────────────
+    if (firstRole === 'data') {
+        const decoded = decodeBytes(selectedBytes, typeChar);
+        if (decoded === null) { hideByteTooltip(); return; }
+        showByteTooltip(range.getBoundingClientRect(), [
+            { key: 'Type',  val: TYPE_LABELS[typeChar] || typeChar },
+            { key: 'Value', val: decoded },
+            { key: 'Bytes', val: indices.length }
+        ]);
+        return;
+    }
+
+    hideByteTooltip();
 });
 </script>
 
