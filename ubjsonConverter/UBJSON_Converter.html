@@ -4,86 +4,306 @@
     <meta charset="UTF-8">
     <title>UBJSON Converter</title>
     <style>
-        :root { --primary: #007AFF; --bg: #f4f7f6; }
-        body { font-family: -apple-system, sans-serif; padding: 20px; background: var(--bg); color: #333; }
-        .page-wrap { max-width: 900px; margin: auto; }
-        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-        /* Shared appearance for hex box and JSON textarea */
+        /* ── CSS custom properties (like #defines for colors) ── */
+        :root {
+            --primary: #007AFF;
+            --bg:      #f4f7f6;
+        }
+
+        body {
+            font-family: -apple-system, sans-serif;
+            padding:     20px;
+            background:  var(--bg);
+            color:       #333;
+        }
+
+        /* Single max-width wrapper; all three cards live inside it so
+           they share the same width without each needing their own max-width. */
+        .page-wrap {
+            max-width: 900px;
+            margin:    auto;
+        }
+
+        .container {
+            background:    white;
+            padding:       30px;
+            border-radius: 12px;
+            box-shadow:    0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        /* ── Input fields ── */
+
+        /* Both the hex box and the JSON textarea share base dimensions. */
         .hex-box, textarea {
-            width: 100%; height: 180px; font-family: 'Courier New', monospace;
-            padding: 12px; border: 1px solid #ccc; border-radius: 6px;
-            box-sizing: border-box; font-size: 14px; display: block;
+            width:         100%;
+            height:        180px;
+            font-family:   'Courier New', monospace;
+            padding:       12px;
+            border:        1px solid #ccc;
+            border-radius: 6px;
+            box-sizing:    border-box;
+            font-size:     14px;
+            display:       block;
         }
+
         textarea { resize: vertical; }
+
+        /* hex-box is a contenteditable div (not a real textarea) so it
+           needs extra properties to behave like one. */
         .hex-box {
-            overflow-y: auto; overflow-x: hidden; white-space: pre-wrap;
-            word-break: break-all; outline: none; resize: vertical;
-            line-height: 1.6; color: #333; cursor: text;
+            overflow-y:  auto;
+            overflow-x:  hidden;
+            white-space: pre-wrap;
+            word-break:  break-all;
+            outline:     none;
+            resize:      vertical;
+            line-height: 1.6;
+            color:       #333;
+            cursor:      text;
         }
-        .hex-box:focus { border-color: #007AFF; box-shadow: 0 0 0 2px rgba(0,122,255,0.15); }
+
+        .hex-box:focus {
+            border-color: #007AFF;
+            box-shadow:   0 0 0 2px rgba(0,122,255,0.15);
+        }
+
+        /* CSS trick to show placeholder text on an empty contenteditable div. */
         .hex-box[data-placeholder]:empty::before {
-            content: attr(data-placeholder); color: #aaa; pointer-events: none;
+            content:        attr(data-placeholder);
+            color:          #aaa;
+            pointer-events: none;
         }
-        .textarea-wrap { margin-bottom: 20px; }
+
+        /* ── Layout helpers ── */
+
+        .textarea-wrap  { margin-bottom: 20px; }
         .textarea-inner { position: relative; }
-        .byte-count { position: absolute; bottom: 8px; right: 20px; font-size: 12px; color: #bbb; pointer-events: none; user-select: none; }
-        .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+
+        /* Byte count label overlaid at the bottom-right of the hex box. */
+        .byte-count {
+            position:       absolute;
+            bottom:         8px;
+            right:          20px;
+            font-size:      12px;
+            color:          #bbb;
+            pointer-events: none;
+            user-select:    none;
+        }
+
+        .label-row {
+            display:         flex;
+            justify-content: space-between;
+            align-items:     center;
+            margin-bottom:   6px;
+        }
+
         .label-row label { font-weight: 600; }
-        .copy-btn { padding: 4px 12px; font-size: 13px; font-weight: 600; cursor: pointer; background: #e9ecef; color: #333; border: 1px solid #ccc; border-radius: 5px; flex: none; }
-        .copy-btn:hover { background: #d0d3d6; }
+
+        /* ── Buttons ── */
+
+        .copy-btn {
+            padding:       4px 12px;
+            font-size:     13px;
+            font-weight:   600;
+            cursor:        pointer;
+            background:    #e9ecef;
+            color:         #333;
+            border:        1px solid #ccc;
+            border-radius: 5px;
+            flex:          none;
+        }
+
+        .copy-btn:hover  { background: #d0d3d6; }
         .copy-btn.copied { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+
         .buttons { display: flex; gap: 15px; margin-bottom: 20px; }
-        button { flex: 1; padding: 14px; cursor: pointer; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
+
+        /* Default style for all <button> elements. Individual buttons can
+           override with inline styles (e.g. the Clear button). */
+        button {
+            flex:          1;
+            padding:       14px;
+            cursor:        pointer;
+            background:    var(--primary);
+            color:         white;
+            border:        none;
+            border-radius: 6px;
+            font-weight:   bold;
+            font-size:     16px;
+        }
+
         button:hover { background: #0056b3; }
-        .error { color: #d9534f; background: #f2dede; padding: 15px; border-radius: 6px; display: none; margin-bottom: 20px; border-left: 5px solid #d9534f; }
-        .color-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 6px; font-size: 13px; color: #555; }
+
+        /* ── Error banner ── */
+
+        .error {
+            color:         #d9534f;
+            background:    #f2dede;
+            padding:       15px;
+            border-radius: 6px;
+            display:       none;
+            margin-bottom: 20px;
+            border-left:   5px solid #d9534f;
+        }
+
+        /* ── Color-coding legend row ── */
+
+        .color-row {
+            display:         flex;
+            justify-content: flex-end;
+            align-items:     center;
+            gap:             12px;
+            margin-top:      6px;
+            font-size:       13px;
+            color:           #555;
+        }
+
         .color-row input[type=checkbox] { cursor: pointer; width: 14px; height: 14px; }
+
         .color-legend { display: flex; gap: 18px; font-size: 12px; }
+
         .legend-item { display: flex; align-items: center; gap: 5px; }
+
         .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-        /* Collapsible reference cards */
-        .ref-card { margin-top: 20px; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; }
-        .ref-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 30px; cursor: pointer; user-select: none; }
-        .ref-header:hover { background: #f8f9fa; }
-        .ref-title { font-size: 16px; font-weight: 700; color: #333; margin: 0; }
-        .ref-chevron { font-size: 12px; color: #999; transition: transform 0.2s; }
+
+        /* ── Collapsible reference cards (Type Reference, ASCII Table) ── */
+
+        .ref-card {
+            margin-top:    20px;
+            background:    white;
+            border-radius: 12px;
+            box-shadow:    0 4px 20px rgba(0,0,0,0.08);
+            overflow:      hidden;
+        }
+
+        .ref-header {
+            display:         flex;
+            justify-content: space-between;
+            align-items:     center;
+            padding:         16px 30px;
+            cursor:          pointer;
+            user-select:     none;
+        }
+
+        .ref-header:hover           { background: #f8f9fa; }
+        .ref-title                  { font-size: 16px; font-weight: 700; color: #333; margin: 0; }
+        .ref-chevron                { font-size: 12px; color: #999; transition: transform 0.2s; }
         .ref-card.open .ref-chevron { transform: rotate(180deg); }
-        .ref-body { display: none; padding: 0 30px 24px; }
-        .ref-card.open .ref-body { display: block; }
-        /* Reference tables */
-        .ref-table { width: 100%; border-collapse: collapse; font-family: 'Courier New', monospace; font-size: 13px; }
-        .ref-table th { text-align: left; padding: 7px 12px; background: #f4f7f6; color: #555; font-weight: 700; border-bottom: 2px solid #e0e0e0; font-family: -apple-system, sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
-        .ref-table td { padding: 5px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .ref-body                   { display: none; padding: 0 30px 24px; }
+        .ref-card.open .ref-body    { display: block; }
+
+        /* ── Reference tables ── */
+
+        .ref-table {
+            width:           100%;
+            border-collapse: collapse;
+            font-family:     'Courier New', monospace;
+            font-size:       13px;
+        }
+
+        .ref-table th {
+            text-align:     left;
+            padding:        7px 12px;
+            background:     #f4f7f6;
+            color:          #555;
+            font-weight:    700;
+            border-bottom:  2px solid #e0e0e0;
+            font-family:    -apple-system, sans-serif;
+            font-size:      12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .ref-table td               { padding: 5px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
         .ref-table tr:last-child td { border-bottom: none; }
-        .ref-table tr:hover td { background: #fafafa; }
-        .marker-pill { display: inline-block; background: #e8f0fe; color: #1a56db; border-radius: 4px; padding: 1px 7px; font-weight: 700; letter-spacing: 0.05em; }
+        .ref-table tr:hover td      { background: #fafafa; }
+
+        /* Styled badge for type marker characters (e.g. 'U', 'I', '{') */
+        .marker-pill {
+            display:        inline-block;
+            background:     #e8f0fe;
+            color:          #1a56db;
+            border-radius:  4px;
+            padding:        1px 7px;
+            font-weight:    700;
+            letter-spacing: 0.05em;
+        }
+
         .hex-cell { color: #007AFF; }
+
+        /* ASCII table laid out as 3 equal columns. */
         .ascii-table-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 32px; }
-        .ascii-col table { width: 100%; }
-        /* Byte inspector tooltip */
-        #byteTooltip { position:fixed; background:#2C2C2A; color:#F1EFE8; border-radius:6px; padding:8px 13px; font-size:12px; white-space:nowrap; pointer-events:none; z-index:9999; display:none; }
-        #byteTooltip .tip-arrow { position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#2C2C2A; }
-        #byteTooltip .tip-row { display:flex; gap:14px; align-items:flex-start; }
-        #byteTooltip .tip-col { display:flex; flex-direction:column; gap:3px; }
-        #byteTooltip .tip-key { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#888780; }
-        #byteTooltip .tip-val { font-size:13px; font-weight:600; font-family:'Courier New',monospace; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
-        #byteTooltip .tip-div { width:0.5px; background:#444441; align-self:stretch; }
-    </style>
+        .ascii-col table  { width: 100%; }
+
+        /* ── Byte inspector tooltip ── */
+
+        /* position:fixed so it is positioned relative to the viewport,
+           not the document — this prevents it from scrolling away. */
+        #byteTooltip {
+            position:       fixed;
+            background:     #2C2C2A;
+            color:          #F1EFE8;
+            border-radius:  6px;
+            padding:        8px 13px;
+            font-size:      12px;
+            white-space:    nowrap;
+            pointer-events: none;   /* clicks pass through to the text below */
+            z-index:        9999;
+            display:        none;
+        }
+
+        /* CSS-only downward-pointing triangle for the tooltip tail. */
+        #byteTooltip .tip-arrow {
+            position:         absolute;
+            top:              100%;
+            border:           5px solid transparent;
+            border-top-color: #2C2C2A;
+        }
+
+        #byteTooltip .tip-row { display: flex; gap: 14px; align-items: flex-start; }
+        #byteTooltip .tip-col { display: flex; flex-direction: column; gap: 3px; }
+
+        #byteTooltip .tip-key {
+            font-size:      10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color:          #888780;
+        }
+
+        #byteTooltip .tip-val {
+            font-size:     13px;
+            font-weight:   600;
+            font-family:   'Courier New', monospace;
+            max-width:     220px;
+            overflow:      hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Thin vertical divider line between tooltip columns. */
+        #byteTooltip .tip-div { width: 0.5px; background: #444441; align-self: stretch; }
+
     </style>
 </head>
 <body>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN CARD
+════════════════════════════════════════════════════════════════ -->
 <div class="page-wrap">
 <div class="container">
+
     <h2>UBJSON Converter</h2>
     <div id="err" class="error"></div>
 
+    <!-- Hex input -->
     <div class="textarea-wrap">
         <div class="label-row">
             <label>UBJSON Hex Bytes:</label>
             <button class="copy-btn" onclick="copyHex(this)">Copy</button>
         </div>
         <div class="textarea-inner">
+            <!-- contenteditable div instead of <textarea> so we can inject
+                 colored <span> elements for the color-coding feature. -->
             <div id="hexInput"
                  class="hex-box"
                  contenteditable="true"
@@ -94,12 +314,18 @@
         </div>
     </div>
 
+    <!-- Action buttons -->
     <div class="buttons">
-        <button onclick="toJS()">Convert Hex → JSON ↓</button>
-        <button onclick="toUB()" style="background: #6c757d;">Convert JSON → Hex ↑</button>
-        <button onclick="clearAll()" style="background: white; color: #666; border: 1px solid #ccc; flex: 0 0 auto; width: 110px; font-size: 14px;">Clear Fields</button>
+        <button onclick="toJS()">Convert Hex &#8594; JSON &#8595;</button>
+        <button onclick="toUB()" style="background:#6c757d;">Convert JSON &#8594; Hex &#8593;</button>
+        <button onclick="clearAll()"
+                style="background:white; color:#666; border:1px solid #ccc;
+                       flex:0 0 auto; width:110px; font-size:14px;">
+            Clear Fields
+        </button>
     </div>
 
+    <!-- JSON output -->
     <div class="textarea-wrap">
         <div class="label-row">
             <label>JSON:</label>
@@ -108,6 +334,7 @@
         <textarea id="jsonInput" placeholder='e.g. {"M":1234}'></textarea>
     </div>
 
+    <!-- Color-coding checkbox + legend (legend hidden until first conversion) -->
     <div class="color-row">
         <span id="legendRow" class="color-legend" style="display:none">
             <span class="legend-item"><span class="legend-dot" style="background:#007AFF"></span>Type marker</span>
@@ -116,79 +343,174 @@
         </span>
         Color-coding: <input type="checkbox" id="colorToggle" onchange="onColorToggle()">
     </div>
-</div>
 
+</div><!-- /.container -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ───────────────────────────────────────────────────────────────
+     Sections:
+       1. UBJSONDecoder   — parse raw bytes into a JS value
+       2. UBJSONAnnotator — tag each byte with a role for color-coding
+       3. UBJSONEncoder   — serialize a JS value into UBJSON bytes
+       4. Hex box helpers — DOM read/write, color rendering, init
+       5. UI actions      — button handlers, clipboard, color toggle
+════════════════════════════════════════════════════════════════ -->
 <script>
-/* ─────────────────────────────────────────────
-   DRAFT 12 DECODER
-───────────────────────────────────────────── */
+
+/* ══════════════════════════════════════════════════════════════
+   1. UBJSON DECODER  (UBJSON Draft 12)
+   ──────────────────────────────────────────────────────────────
+   Reads a Uint8Array of UBJSON bytes and returns a plain JS
+   value (object, array, number, string, bool, or null).
+
+   Think of this as a recursive-descent parser where this.offset
+   is the read pointer walking forward through the byte buffer.
+   DataView gives typed reads with explicit endianness — similar
+   to casting a uint8_t* to int16_t* and dereferencing in C,
+   but without undefined behaviour.
+
+   All multi-byte integers are big-endian per the UBJSON spec.
+══════════════════════════════════════════════════════════════ */
 class UBJSONDecoder {
+
+    /* bytes — Uint8Array of raw UBJSON data */
     constructor(bytes) {
-        this.data = bytes;
-        this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        this.data   = bytes;
+        this.view   = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         this.offset = 0;
     }
 
+    /* Lazily-created singleton sentinel for the UBJSON no-op marker.
+       Using a frozen object lets us identify it with === (like a unique
+       pointer value in C that no real payload will ever equal). */
+    get NOOP() { return UBJSONDecoder.NOOP; }
+    static get NOOP() {
+        if (!this._noop) {
+            this._noop = Object.freeze({ __ubjson_noop__: true });
+        }
+        return this._noop;
+    }
+
+    /* ── read() ─────────────────────────────────────────────────
+       Consume the type-marker byte at this.offset, then read and
+       return the payload as a JS value.
+       This is the main dispatch — like a switch on the first byte
+       of each UBJSON value in a C parser. ── */
     read() {
         if (this.offset >= this.data.length) return undefined;
+
         const typeByte = this.data[this.offset++];
         const typeChar = String.fromCharCode(typeByte);
+
         switch (typeChar) {
             case '{': return this.readObject();
             case '[': return this.readArray();
             case 'S': return this.readString();
+            case 'H': return this.readString();         /* high-precision: stored as a UTF-8 string */
             case 'N': return this.NOOP;
-            case 'U': return this.data[this.offset++];
-            case 'i': return this.view.getInt8(this.offset++);
-            case 'I': { let v = this.view.getInt16(this.offset, false); this.offset += 2; return v; }
-            case 'l': { let v = this.view.getInt32(this.offset, false); this.offset += 4; return v; }
-            case 'L': {
-                const big = this.view.getBigInt64(this.offset, false); this.offset += 8;
-                const n = Number(big);
-                return Number.isSafeInteger(n) ? n : big.toString();
-            }
-            case 'd': { let v = this.view.getFloat32(this.offset, false); this.offset += 4; return v; }
-            case 'D': { let v = this.view.getFloat64(this.offset, false); this.offset += 8; return v; }
-            case 'C': return String.fromCharCode(this.data[this.offset++]);
-            case 'H': return this.readString();
             case 'T': return true;
             case 'F': return false;
             case 'Z': return null;
+            case 'C': return String.fromCharCode(this.data[this.offset++]);
+            case 'U': return this.data[this.offset++];  /* uint8 — one byte, unsigned */
+            case 'i': return this.view.getInt8(this.offset++);
+            case 'I': {
+                const v = this.view.getInt16(this.offset, false);
+                this.offset += 2;
+                return v;
+            }
+            case 'l': {
+                const v = this.view.getInt32(this.offset, false);
+                this.offset += 4;
+                return v;
+            }
+            case 'L': {
+                /* JS numbers are IEEE 754 doubles (53-bit mantissa), so int64
+                   values outside ±2^53 lose precision. Return them as strings
+                   to preserve the full value. */
+                const big = this.view.getBigInt64(this.offset, false);
+                this.offset += 8;
+                const n = Number(big);
+                return Number.isSafeInteger(n) ? n : big.toString();
+            }
+            case 'd': {
+                const v = this.view.getFloat32(this.offset, false);
+                this.offset += 4;
+                return v;
+            }
+            case 'D': {
+                const v = this.view.getFloat64(this.offset, false);
+                this.offset += 8;
+                return v;
+            }
             default:
-                throw new Error(`Unknown UBJSON type marker: 0x${typeByte.toString(16).padStart(2,'0')} ('${typeChar}') at offset ${this.offset-1}`);
+                throw new Error(
+                    `Unknown UBJSON type marker: ` +
+                    `0x${typeByte.toString(16).padStart(2,'0')} ` +
+                    `('${typeChar}') at offset ${this.offset - 1}`
+                );
         }
     }
 
-    get NOOP() { return UBJSONDecoder.NOOP; }
-    static get NOOP() { if (!this._noop) this._noop = Object.freeze({__ubjson_noop__: true}); return this._noop; }
-
+    /* ── readString() ───────────────────────────────────────────
+       UBJSON strings: [length as typed-int][UTF-8 bytes]
+       The length is itself a complete UBJSON value, so we recurse
+       into read() to decode it. ── */
     readString() {
         const lenRaw = this.read();
-        // L-encoded lengths outside Number.MAX_SAFE_INTEGER come back as strings
-        const len = typeof lenRaw === 'string' ? parseInt(lenRaw, 10) : lenRaw;
-        if (typeof len !== 'number' || !Number.isFinite(len) || len < 0)
+
+        /* L-encoded lengths exceeding MAX_SAFE_INTEGER come back as
+           strings from read(); convert back to a number here. */
+        const len = (typeof lenRaw === 'string') ? parseInt(lenRaw, 10) : lenRaw;
+
+        if (typeof len !== 'number' || !Number.isFinite(len) || len < 0) {
             throw new Error("Expected numeric length for string");
+        }
+
         const strBytes = this.data.slice(this.offset, this.offset + len);
         this.offset += len;
         return new TextDecoder().decode(strBytes);
     }
 
-    // Read a typed value whose type marker is already known (optimized container format).
-    // The type byte has already been consumed by the caller; we only read the payload here.
+    /* ── readTypedValue() ───────────────────────────────────────
+       Used by optimized containers ([$type][#count][payloads...]).
+       The type marker byte has already been consumed by the caller;
+       we only read the payload bytes for that known type.
+       Think: given we know the C type, just memcpy the right number
+       of bytes and cast. ── */
     readTypedValue(typeChar) {
         switch (typeChar) {
             case 'U': return this.data[this.offset++];
             case 'i': return this.view.getInt8(this.offset++);
-            case 'I': { let v = this.view.getInt16(this.offset, false); this.offset += 2; return v; }
-            case 'l': { let v = this.view.getInt32(this.offset, false); this.offset += 4; return v; }
+            case 'C': return String.fromCharCode(this.data[this.offset++]);
+            case 'I': {
+                const v = this.view.getInt16(this.offset, false);
+                this.offset += 2;
+                return v;
+            }
+            case 'l': {
+                const v = this.view.getInt32(this.offset, false);
+                this.offset += 4;
+                return v;
+            }
             case 'L': {
-                const big = this.view.getBigInt64(this.offset, false); this.offset += 8;
+                const big = this.view.getBigInt64(this.offset, false);
+                this.offset += 8;
                 const n = Number(big);
                 return Number.isSafeInteger(n) ? n : big.toString();
             }
-            case 'd': { let v = this.view.getFloat32(this.offset, false); this.offset += 4; return v; }
-            case 'D': { let v = this.view.getFloat64(this.offset, false); this.offset += 8; return v; }
-            case 'C': return String.fromCharCode(this.data[this.offset++]);
+            case 'd': {
+                const v = this.view.getFloat32(this.offset, false);
+                this.offset += 4;
+                return v;
+            }
+            case 'D': {
+                const v = this.view.getFloat64(this.offset, false);
+                this.offset += 8;
+                return v;
+            }
             case 'S': case 'H': return this.readString();
             case 'T': return true;
             case 'F': return false;
@@ -196,42 +518,66 @@ class UBJSONDecoder {
             case 'N': return this.NOOP;
             case '[': return this.readArray();
             case '{': return this.readObject();
-            default: throw new Error(`Unknown type in strongly-typed container: '${typeChar}'`);
+            default:
+                throw new Error(`Unknown type in strongly-typed container: '${typeChar}'`);
         }
     }
 
-    readObject() {
-        const obj = {};
-        let fixedType = null;
-        let count = -1; // -1 = streaming (terminated by '}')
+    /* ── readObject() ───────────────────────────────────────────
+       Reads a UBJSON object (equivalent to a JSON object / C struct).
 
-        // Optimized format: optional '$' type specifier
-        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '$') {
-            this.offset++; // consume '$'
+       Stream format:    { [key:string, value]... }
+       Optimized format: { [$type] [#count] [key:string, payload]... }
+
+       The '$' and '#' optimizations are optional and independent.
+       '$' means all values share one type (omits per-value markers).
+       '#' means element count is known (omits the '}' end marker). ── */
+    readObject() {
+        const obj     = {};
+        let fixedType = null;
+        let count     = -1; /* -1 = streaming mode: read until '}' */
+
+        /* Optional '$' type specifier */
+        if (this.offset < this.data.length &&
+            String.fromCharCode(this.data[this.offset]) === '$') {
+            this.offset++;  /* consume '$' */
             fixedType = String.fromCharCode(this.data[this.offset++]);
         }
-        // Optimized format: optional '#' count specifier
-        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '#') {
-            this.offset++; // consume '#'
+
+        /* Optional '#' count specifier */
+        if (this.offset < this.data.length &&
+            String.fromCharCode(this.data[this.offset]) === '#') {
+            this.offset++;  /* consume '#' */
             const countRaw = this.read();
-            count = typeof countRaw === 'string' ? parseInt(countRaw, 10) : countRaw;
+            count = (typeof countRaw === 'string') ? parseInt(countRaw, 10) : countRaw;
         }
 
-        // Null/no-op/boolean typed objects: body contains only keys, values are implied
-        const NO_PAYLOAD = new Set(['Z', 'N', 'T', 'F']);
+        /* For T/F/Z/N with a fixed type, no value bytes exist —
+           the value is fully implied by the type marker alone. */
+        const NO_PAYLOAD   = new Set(['Z', 'N', 'T', 'F']);
         const impliedValue = fixedType && NO_PAYLOAD.has(fixedType);
 
+        /* Inner function to read one key-value pair.
+           In C terms: a local helper that closes over the outer scope
+           variables (obj, fixedType, impliedValue) — like a nested
+           function with access to the enclosing stack frame. */
         const readEntry = () => {
             const key = this.readString();
             let val;
+
             if (impliedValue) {
-                val = fixedType === 'T' ? true : fixedType === 'F' ? false
-                    : fixedType === 'N' ? this.NOOP : null;
+                /* Value is determined by the type marker; no bytes to read. */
+                if      (fixedType === 'T') val = true;
+                else if (fixedType === 'F') val = false;
+                else if (fixedType === 'N') val = this.NOOP;
+                else                        val = null;
             } else if (fixedType) {
                 val = this.readTypedValue(fixedType);
             } else {
                 val = this.read();
             }
+
+            /* Discard no-op values — they have no JSON equivalent. */
             if (val !== UBJSONDecoder.NOOP) obj[key] = val;
         };
 
@@ -239,151 +585,263 @@ class UBJSONDecoder {
             for (let i = 0; i < count; i++) readEntry();
         } else {
             while (this.offset < this.data.length) {
-                if (String.fromCharCode(this.data[this.offset]) === '}') { this.offset++; break; }
+                if (String.fromCharCode(this.data[this.offset]) === '}') {
+                    this.offset++; /* consume '}' end marker */
+                    break;
+                }
                 readEntry();
             }
         }
+
         return obj;
     }
 
+    /* ── readArray() ────────────────────────────────────────────
+       Reads a UBJSON array. Same optimized-format logic as
+       readObject() but without key strings between elements. ── */
     readArray() {
-        const arr = [];
+        const arr     = [];
         let fixedType = null;
-        let count = -1; // -1 = streaming (terminated by ']')
+        let count     = -1;
 
-        // Optimized format: optional '$' type specifier
-        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '$') {
-            this.offset++; // consume '$'
+        if (this.offset < this.data.length &&
+            String.fromCharCode(this.data[this.offset]) === '$') {
+            this.offset++;  /* consume '$' */
             fixedType = String.fromCharCode(this.data[this.offset++]);
         }
-        // Optimized format: optional '#' count specifier
-        if (this.offset < this.data.length && String.fromCharCode(this.data[this.offset]) === '#') {
-            this.offset++; // consume '#'
+
+        if (this.offset < this.data.length &&
+            String.fromCharCode(this.data[this.offset]) === '#') {
+            this.offset++;  /* consume '#' */
             const countRaw = this.read();
-            count = typeof countRaw === 'string' ? parseInt(countRaw, 10) : countRaw;
+            count = (typeof countRaw === 'string') ? parseInt(countRaw, 10) : countRaw;
         }
 
         if (count >= 0) {
-            // Counted container: no end marker in stream
+            /* Counted container — no ']' end marker in the stream. */
             for (let i = 0; i < count; i++) {
                 const val = fixedType ? this.readTypedValue(fixedType) : this.read();
                 if (val !== UBJSONDecoder.NOOP) arr.push(val);
             }
         } else {
-            // Streaming container: read until ']'
+            /* Streaming container — read elements until ']'. */
             while (this.offset < this.data.length) {
-                if (String.fromCharCode(this.data[this.offset]) === ']') { this.offset++; break; }
+                if (String.fromCharCode(this.data[this.offset]) === ']') {
+                    this.offset++; /* consume ']' end marker */
+                    break;
+                }
                 const val = this.read();
                 if (val !== UBJSONDecoder.NOOP) arr.push(val);
             }
         }
+
         return arr;
     }
 }
 
-/* ─────────────────────────────────────────────
-   DRAFT 12 ANNOTATOR
-   Mirrors the decoder but records the role of
-   every byte: 'marker' | 'length' | 'data'
-───────────────────────────────────────────── */
+
+/* ══════════════════════════════════════════════════════════════
+   2. UBJSON ANNOTATOR
+   ──────────────────────────────────────────────────────────────
+   Mirrors the decoder structure but instead of returning a JS
+   value, it fills two parallel arrays indexed by byte position:
+
+     roles[]       — one of: 'marker' | 'length' | 'data'
+     typeMarkers[] — the UBJSON type char (e.g. 'I', 'S') that
+                     governs each byte, or null for markers
+
+   Think of it as producing a per-byte metadata table in a second
+   pass over the same byte stream. These arrays drive both the
+   color-coding display and the byte inspector tooltip.
+══════════════════════════════════════════════════════════════ */
 class UBJSONAnnotator {
+
     constructor(bytes) {
-        this.bytes = bytes;
-        this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        this.offset = 0;
-        this.roles = new Array(bytes.length).fill('data');
+        this.bytes       = bytes;
+        this.view        = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        this.offset      = 0;
+        this.roles       = new Array(bytes.length).fill('data'); /* default everything to 'data' */
         this.typeMarkers = new Array(bytes.length).fill(null);
     }
 
-    mark(start, end, role) {
-        for (let i = start; i < end && i < this.roles.length; i++) this.roles[i] = role;
+    /* Run the annotation pass. Returns both arrays.
+       Errors mid-stream are swallowed — partial results are still useful. */
+    annotate() {
+        try {
+            this.annotateValue();
+        } catch (e) { /* partial annotation is acceptable */ }
+        return { roles: this.roles, typeMarkers: this.typeMarkers };
     }
 
-    // Mark a range with a given role and record which type marker governs those bytes.
-    markTyped(start, end, role, typeChar) {
+    /* ── mark() ─────────────────────────────────────────────────
+       Set roles[start..end) to `role` without touching typeMarkers.
+       Used only for structural marker bytes that have no payload
+       type association (e.g. '{', '}', '$', '#'). ── */
+    mark(start, end, role) {
         for (let i = start; i < end && i < this.roles.length; i++) {
             this.roles[i] = role;
+        }
+    }
+
+    /* ── markTyped() ────────────────────────────────────────────
+       Set roles[start..end) to `role` AND record `typeChar` in
+       typeMarkers[]. Used for all typed payload bytes (data and
+       length fields) so the tooltip can decode them later. ── */
+    markTyped(start, end, role, typeChar) {
+        for (let i = start; i < end && i < this.roles.length; i++) {
+            this.roles[i]       = role;
             this.typeMarkers[i] = typeChar;
         }
     }
 
-    annotate() {
-        try { this.annotateValue(); } catch(e) { /* partial annotation is fine */ }
-        return { roles: this.roles, typeMarkers: this.typeMarkers };
-    }
-
-    // Reads a typed integer used as a length prefix.
-    // The type byte itself (U/i/I/l) is always a 'marker'; the value bytes get `role`
-    // and their integer typeChar recorded in typeMarkers so the tooltip can decode them.
+    /* ── annotateIntAs() ────────────────────────────────────────
+       Reads a typed integer used as a length or count prefix.
+       The type byte (U/i/I/l) is always marked 'marker'.
+       The integer value bytes are marked with `role` (usually
+       'length') and their typeChar is stored so the tooltip can
+       decode and display the numeric value.
+       Returns the numeric value so the caller can use it as a length. ── */
     annotateIntAs(role) {
         if (this.offset >= this.bytes.length) return 0;
-        const idx = this.offset;
+
+        const idx      = this.offset;
         const typeChar = String.fromCharCode(this.bytes[this.offset++]);
-        this.mark(idx, idx + 1, 'marker'); // the U/i/I/l byte is always a type marker
+        this.mark(idx, idx + 1, 'marker'); /* the U/i/I/l type byte is always a marker */
+
         let val = 0;
         switch (typeChar) {
-            case 'U': this.markTyped(this.offset, this.offset + 1, role, typeChar); val = this.bytes[this.offset++]; break;
-            case 'i': this.markTyped(this.offset, this.offset + 1, role, typeChar); val = this.view.getInt8(this.offset++); break;
-            case 'I': this.markTyped(this.offset, this.offset + 2, role, typeChar); val = this.view.getInt16(this.offset, false); this.offset += 2; break;
-            case 'l': this.markTyped(this.offset, this.offset + 4, role, typeChar); val = this.view.getInt32(this.offset, false); this.offset += 4; break;
+            case 'U':
+                this.markTyped(this.offset, this.offset + 1, role, typeChar);
+                val = this.bytes[this.offset++];
+                break;
+            case 'i':
+                this.markTyped(this.offset, this.offset + 1, role, typeChar);
+                val = this.view.getInt8(this.offset++);
+                break;
+            case 'I':
+                this.markTyped(this.offset, this.offset + 2, role, typeChar);
+                val = this.view.getInt16(this.offset, false);
+                this.offset += 2;
+                break;
+            case 'l':
+                this.markTyped(this.offset, this.offset + 4, role, typeChar);
+                val = this.view.getInt32(this.offset, false);
+                this.offset += 4;
+                break;
         }
+
         return val;
     }
 
-    // Marks the length bytes as 'length' and the payload bytes as 'data'
+    /* ── annotateString() ───────────────────────────────────────
+       Marks the length prefix bytes as 'length' and the string
+       payload bytes as 'data' under the given typeChar. ── */
     annotateString(typeChar = 'S') {
         const len = this.annotateIntAs('length');
         this.markTyped(this.offset, this.offset + len, 'data', typeChar);
         this.offset += len;
     }
 
+    /* ── annotateValue() ────────────────────────────────────────
+       Consumes and marks the type-marker byte, then dispatches to
+       the appropriate handler for its payload bytes. ── */
     annotateValue() {
         if (this.offset >= this.bytes.length) return;
-        const idx = this.offset;
+
+        const idx      = this.offset;
         const typeByte = this.bytes[this.offset++];
         const typeChar = String.fromCharCode(typeByte);
         this.mark(idx, idx + 1, 'marker');
 
         switch (typeChar) {
             case '{': this.annotateObject(); break;
-            case '[': this.annotateArray(); break;
-            case 'S': case 'H': this.annotateString(typeChar); break;
-            case 'N': case 'T': case 'F': case 'Z': break;
+            case '[': this.annotateArray();  break;
+            case 'S': case 'H':
+                this.annotateString(typeChar);
+                break;
+            case 'N': case 'T': case 'F': case 'Z':
+                break; /* marker-only types: no payload bytes */
             case 'U': case 'i': case 'C':
-                this.markTyped(this.offset, this.offset + 1, 'data', typeChar); this.offset++; break;
+                this.markTyped(this.offset, this.offset + 1, 'data', typeChar);
+                this.offset += 1;
+                break;
             case 'I':
-                this.markTyped(this.offset, this.offset + 2, 'data', typeChar); this.offset += 2; break;
+                this.markTyped(this.offset, this.offset + 2, 'data', typeChar);
+                this.offset += 2;
+                break;
             case 'l': case 'd':
-                this.markTyped(this.offset, this.offset + 4, 'data', typeChar); this.offset += 4; break;
+                this.markTyped(this.offset, this.offset + 4, 'data', typeChar);
+                this.offset += 4;
+                break;
             case 'L': case 'D':
-                this.markTyped(this.offset, this.offset + 8, 'data', typeChar); this.offset += 8; break;
+                this.markTyped(this.offset, this.offset + 8, 'data', typeChar);
+                this.offset += 8;
+                break;
         }
     }
 
+    /* ── annotateTypedValue() ───────────────────────────────────
+       Marks payload bytes for a value whose type is already known
+       (optimized container format). The type marker byte has already
+       been annotated by the caller; here we only handle the payload. ── */
+    annotateTypedValue(typeChar) {
+        switch (typeChar) {
+            case 'U': case 'i': case 'C':
+                this.markTyped(this.offset, this.offset + 1, 'data', typeChar);
+                this.offset += 1;
+                break;
+            case 'I':
+                this.markTyped(this.offset, this.offset + 2, 'data', typeChar);
+                this.offset += 2;
+                break;
+            case 'l': case 'd':
+                this.markTyped(this.offset, this.offset + 4, 'data', typeChar);
+                this.offset += 4;
+                break;
+            case 'L': case 'D':
+                this.markTyped(this.offset, this.offset + 8, 'data', typeChar);
+                this.offset += 8;
+                break;
+            case 'S': case 'H':
+                this.annotateString(typeChar);
+                break;
+            case 'T': case 'F': case 'Z': case 'N':
+                break; /* no payload bytes */
+            case '[': this.annotateArray();  break;
+            case '{': this.annotateObject(); break;
+        }
+    }
+
+    /* ── annotateObject() ───────────────────────────────────────
+       Mirrors readObject() — same optimized-format detection,
+       but tags bytes instead of building a JS value. ── */
     annotateObject() {
         let fixedType = null;
-        let count = -1;
+        let count     = -1;
 
-        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '$') {
-            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '$' marker
-            this.mark(this.offset, this.offset + 1, 'marker'); // the type byte itself is a marker
+        if (this.offset < this.bytes.length &&
+            String.fromCharCode(this.bytes[this.offset]) === '$') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; /* '$' */
+            this.mark(this.offset, this.offset + 1, 'marker');                /* type byte */
             fixedType = String.fromCharCode(this.bytes[this.offset++]);
         }
-        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '#') {
-            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '#' marker
+
+        if (this.offset < this.bytes.length &&
+            String.fromCharCode(this.bytes[this.offset]) === '#') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; /* '#' */
             count = this.annotateIntAs('length');
         }
 
-        const NO_PAYLOAD = new Set(['Z', 'N', 'T', 'F']);
+        const NO_PAYLOAD   = new Set(['Z', 'N', 'T', 'F']);
         const impliedValue = fixedType && NO_PAYLOAD.has(fixedType);
 
         const annotateEntry = () => {
-            this.annotateString(); // naked key
+            this.annotateString(); /* key string (always role 'data' under typeChar 'S') */
             if (!impliedValue) {
                 if (fixedType) this.annotateTypedValue(fixedType);
-                else this.annotateValue();
+                else           this.annotateValue();
             }
-            // impliedValue: no value bytes in stream, nothing to annotate
+            /* impliedValue: no value bytes present, nothing to annotate */
         };
 
         if (count >= 0) {
@@ -391,55 +849,46 @@ class UBJSONAnnotator {
         } else {
             while (this.offset < this.bytes.length) {
                 if (String.fromCharCode(this.bytes[this.offset]) === '}') {
-                    this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; break;
+                    this.mark(this.offset, this.offset + 1, 'marker');
+                    this.offset++;
+                    break;
                 }
                 annotateEntry();
             }
         }
     }
 
-    // Annotate the payload bytes of a known-typed value (optimized container format).
-    // The type marker byte has already been annotated by the caller.
-    annotateTypedValue(typeChar) {
-        switch (typeChar) {
-            case 'U': case 'i': case 'C':
-                this.markTyped(this.offset, this.offset + 1, 'data', typeChar); this.offset++; break;
-            case 'I':
-                this.markTyped(this.offset, this.offset + 2, 'data', typeChar); this.offset += 2; break;
-            case 'l': case 'd':
-                this.markTyped(this.offset, this.offset + 4, 'data', typeChar); this.offset += 4; break;
-            case 'L': case 'D':
-                this.markTyped(this.offset, this.offset + 8, 'data', typeChar); this.offset += 8; break;
-            case 'S': case 'H': this.annotateString(typeChar); break;
-            case 'T': case 'F': case 'Z': case 'N': break; // no payload bytes
-            case '[': this.annotateArray(); break;
-            case '{': this.annotateObject(); break;
-        }
-    }
-
+    /* ── annotateArray() ────────────────────────────────────────
+       Mirrors readArray() — same logic as annotateObject() but
+       without key strings between elements. ── */
     annotateArray() {
         let fixedType = null;
-        let count = -1;
+        let count     = -1;
 
-        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '$') {
-            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '$' marker
-            this.mark(this.offset, this.offset + 1, 'marker'); // the type byte itself is a marker
+        if (this.offset < this.bytes.length &&
+            String.fromCharCode(this.bytes[this.offset]) === '$') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; /* '$' */
+            this.mark(this.offset, this.offset + 1, 'marker');                /* type byte */
             fixedType = String.fromCharCode(this.bytes[this.offset++]);
         }
-        if (this.offset < this.bytes.length && String.fromCharCode(this.bytes[this.offset]) === '#') {
-            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; // '#' marker
-            count = this.annotateIntAs('length'); // count value bytes are treated as 'length'
+
+        if (this.offset < this.bytes.length &&
+            String.fromCharCode(this.bytes[this.offset]) === '#') {
+            this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; /* '#' */
+            count = this.annotateIntAs('length');
         }
 
         if (count >= 0) {
             for (let i = 0; i < count; i++) {
                 if (fixedType) this.annotateTypedValue(fixedType);
-                else this.annotateValue();
+                else           this.annotateValue();
             }
         } else {
             while (this.offset < this.bytes.length) {
                 if (String.fromCharCode(this.bytes[this.offset]) === ']') {
-                    this.mark(this.offset, this.offset + 1, 'marker'); this.offset++; break;
+                    this.mark(this.offset, this.offset + 1, 'marker');
+                    this.offset++;
+                    break;
                 }
                 this.annotateValue();
             }
@@ -447,19 +896,37 @@ class UBJSONAnnotator {
     }
 }
 
-/* ─────────────────────────────────────────────
-   DRAFT 12 ENCODER
-───────────────────────────────────────────── */
-class UBJSONEncoder {
-    constructor() { this.buf = []; }
 
+/* ══════════════════════════════════════════════════════════════
+   3. UBJSON ENCODER  (UBJSON Draft 12)
+   ──────────────────────────────────────────────────────────────
+   Converts a plain JS value (object, array, number, string,
+   bool, or null) into a UBJSON byte stream.
+
+   this.buf is a plain JS Array used as a dynamic byte buffer —
+   like a growable uint8_t[] in C. getBytes() wraps it in a
+   Uint8Array for typed access; getHex() formats it for display.
+══════════════════════════════════════════════════════════════ */
+class UBJSONEncoder {
+
+    constructor() {
+        this.buf = []; /* byte accumulator: Array of uint8 integers */
+    }
+
+    /* ── write() ────────────────────────────────────────────────
+       Dispatch on JS type and emit the corresponding UBJSON bytes.
+       isKey=true means we are writing an object key string, which
+       omits the 'S' type marker (object keys are implicitly strings
+       in UBJSON and do not carry a marker). ── */
     write(val, isKey = false) {
         if (typeof val === 'string') {
-            if (!isKey) this.buf.push('S'.charCodeAt(0));
+            if (!isKey) this.buf.push('S'.charCodeAt(0)); /* 'S' string type marker */
             this.writeInteger(val.length);
             new TextEncoder().encode(val).forEach(b => this.buf.push(b));
+
         } else if (typeof val === 'number') {
             if (!Number.isInteger(val)) {
+                /* Non-integer → float64 ('D'), big-endian */
                 this.buf.push('D'.charCodeAt(0));
                 const view = new DataView(new ArrayBuffer(8));
                 view.setFloat64(0, val, false);
@@ -467,71 +934,96 @@ class UBJSONEncoder {
             } else {
                 this.writeInteger(val);
             }
+
         } else if (val === null) {
             this.buf.push('Z'.charCodeAt(0));
+
         } else if (typeof val === 'boolean') {
             this.buf.push(val ? 'T'.charCodeAt(0) : 'F'.charCodeAt(0));
+
         } else if (Array.isArray(val)) {
-            // Use optimized format for integer arrays: [$][type][#][count][...payloads...]
-            if (val.length > 0 && val.every(v => typeof v === 'number' && Number.isInteger(v))) {
+            /* Use the optimized format for homogeneous integer arrays:
+               [$type][#count][...raw payloads...]
+               This omits per-element type markers, saving space. */
+            const allIntegers = val.length > 0 &&
+                                val.every(v => typeof v === 'number' && Number.isInteger(v));
+            if (allIntegers) {
                 const typeChar = this.pickIntegerType(val);
                 this.buf.push('['.charCodeAt(0));
                 this.buf.push('$'.charCodeAt(0));
                 this.buf.push(typeChar.charCodeAt(0));
                 this.buf.push('#'.charCodeAt(0));
-                this.writeInteger(val.length); // count — type marker + value
+                this.writeInteger(val.length);
                 val.forEach(item => this.writeIntPayload(item, typeChar));
-                // No end marker: count was specified
+                /* No ']' end marker — count was specified, so it is suppressed. */
             } else {
                 this.buf.push('['.charCodeAt(0));
                 val.forEach(item => this.write(item));
                 this.buf.push(']'.charCodeAt(0));
             }
+
         } else if (typeof val === 'object') {
             this.buf.push('{'.charCodeAt(0));
-            for (let k in val) { this.write(k, true); this.write(val[k]); }
+            for (const k in val) {
+                this.write(k, true); /* key (no 'S' marker) */
+                this.write(val[k]);  /* value */
+            }
             this.buf.push('}'.charCodeAt(0));
         }
     }
 
+    /* ── writeInteger() ─────────────────────────────────────────
+       Encode n using the smallest UBJSON integer type that fits.
+       Equivalent to: choose the narrowest C integer type, emit its
+       marker byte, then emit the value big-endian. ── */
     writeInteger(n) {
-        if (n >= 0 && n <= 127) {
-            this.buf.push('U'.charCodeAt(0)); this.buf.push(n);
+        if (n >= 0 && n <= 255) {
+            /* uint8 covers 0-127 and 128-255 */
+            this.buf.push('U'.charCodeAt(0));
+            this.buf.push(n);
         } else if (n >= -128 && n < 0) {
-            this.buf.push('i'.charCodeAt(0)); this.buf.push(n & 0xFF);
-        } else if (n >= 128 && n <= 255) {
-            this.buf.push('U'.charCodeAt(0)); this.buf.push(n);
+            /* int8 for negative values only — positives use uint8 above */
+            this.buf.push('i'.charCodeAt(0));
+            this.buf.push(n & 0xFF);
         } else if (n >= -32768 && n <= 32767) {
             this.buf.push('I'.charCodeAt(0));
-            const v = new DataView(new ArrayBuffer(2)); v.setInt16(0, n, false);
+            const v = new DataView(new ArrayBuffer(2));
+            v.setInt16(0, n, false);
             new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
         } else if (n >= -2147483648 && n <= 2147483647) {
             this.buf.push('l'.charCodeAt(0));
-            const v = new DataView(new ArrayBuffer(4)); v.setInt32(0, n, false);
+            const v = new DataView(new ArrayBuffer(4));
+            v.setInt32(0, n, false);
             new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
         } else {
             this.buf.push('L'.charCodeAt(0));
-            const v = new DataView(new ArrayBuffer(8)); v.setBigInt64(0, BigInt(n), false);
+            const v = new DataView(new ArrayBuffer(8));
+            v.setBigInt64(0, BigInt(n), false);
             new Uint8Array(v.buffer).forEach(b => this.buf.push(b));
         }
     }
 
-    // Choose the smallest integer type marker that fits every value in the array
+    /* ── pickIntegerType() ──────────────────────────────────────
+       Scan all values and return the marker char of the smallest
+       integer type that fits every element. ── */
     pickIntegerType(values) {
         const min = Math.min(...values);
         const max = Math.max(...values);
-        if (min >= 0 && max <= 255)           return 'U'; // uint8
-        if (min >= -128 && max <= 127)         return 'i'; // int8
-        if (min >= -32768 && max <= 32767)     return 'I'; // int16
-        if (min >= -2147483648 && max <= 2147483647) return 'l'; // int32
-        return 'L';                                        // int64
+        if (min >= 0    && max <= 255)           return 'U'; /* uint8  */
+        if (min >= -128 && max <= 127)           return 'i'; /* int8   */
+        if (min >= -32768 && max <= 32767)       return 'I'; /* int16  */
+        if (min >= -2147483648 && max <= 2147483647) return 'l'; /* int32 */
+        return 'L';                                           /* int64  */
     }
 
-    // Write the raw payload bytes for an integer of known type — no type marker
+    /* ── writeIntPayload() ──────────────────────────────────────
+       Write raw payload bytes for a known integer type with no
+       preceding type marker. Used inside optimized typed arrays. ── */
     writeIntPayload(n, typeChar) {
         switch (typeChar) {
-            case 'U': this.buf.push(n & 0xFF); break;
-            case 'i': this.buf.push(n & 0xFF); break;
+            case 'U': case 'i':
+                this.buf.push(n & 0xFF);
+                break;
             case 'I': {
                 const v = new DataView(new ArrayBuffer(2));
                 v.setInt16(0, n, false);
@@ -553,127 +1045,95 @@ class UBJSONEncoder {
         }
     }
 
-    getBytes() { return new Uint8Array(this.buf); }
-    getHex() { return this.buf.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(', '); }
+    /* Return the accumulated bytes as a Uint8Array. */
+    getBytes() {
+        return new Uint8Array(this.buf);
+    }
+
+    /* Return a human-readable comma-separated hex string for display. */
+    getHex() {
+        return this.buf
+            .map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0'))
+            .join(', ');
+    }
 }
 
-/* ─────────────────────────────────────────────
-   HEX BOX HELPERS
-───────────────────────────────────────────── */
-const ROLE_COLORS = { marker: '#007AFF', length: '#e67e22', data: '#27ae60' };
 
+/* ══════════════════════════════════════════════════════════════
+   4. HEX BOX HELPERS
+   ──────────────────────────────────────────────────────────────
+   Functions for reading/writing the hex input div, rendering
+   color spans, and managing global annotation state.
+
+   Global state (on the window object — JS's equivalent of
+   file-scope globals in C):
+
+     window._ubAnn — last annotation result, or null:
+       { bytes: Uint8Array, roles: string[], typeMarkers: string[] }
+       Cleared when color-coding is off or the box is cleared.
+
+     window._ubHasConverted — bool, true after the first successful
+       conversion with color-coding on. Gates the legend display.
+══════════════════════════════════════════════════════════════ */
+
+/* Color for each byte role. '{' and '}' are rendered black
+   separately since they are structural, not semantic. */
+const ROLE_COLORS = {
+    marker: '#007AFF', /* blue   */
+    length: '#e67e22', /* orange */
+    data:   '#27ae60'  /* green  */
+};
+
+/* Read the plain-text content of the hex box (strips any span HTML). */
 function getHexText() {
     return document.getElementById('hexInput').innerText;
 }
 
+/* Replace the hex box content with plain unstyled text. */
 function setHexPlain(text) {
     document.getElementById('hexInput').textContent = text;
 }
 
+/* Replace the hex box content with color-coded <span> elements.
+   Each span gets a data-bi="N" attribute (byte index) used by the
+   tooltip to map a DOM selection back to byte array indices. */
 function setHexColored(bytes, roles) {
     const parts = Array.from(bytes).map((b, i) => {
         const hex = '0x' + b.toString(16).toUpperCase().padStart(2, '0');
-        // Only render 0x7B and 0x7D as black if their role is 'marker' (i.e., structural)
-        const color = ((b === 0x7B || b === 0x7D) && roles[i] === 'marker')
-            ? '#333'
-            : (ROLE_COLORS[roles[i]] || '#333');
+
+        /* '{' (0x7B) and '}' (0x7D) are shown in black when they are
+           structural markers, so they visually stand apart. */
+        const isStructural = (b === 0x7B || b === 0x7D) && roles[i] === 'marker';
+        const color        = isStructural ? '#333' : (ROLE_COLORS[roles[i]] || '#333');
+
         return `<span data-bi="${i}" style="color:${color}">${hex}</span>`;
     });
+
     document.getElementById('hexInput').innerHTML =
         parts.join('<span style="color:#999">, </span>');
 }
 
-// Strip HTML on paste — only accept plain text
-document.addEventListener('DOMContentLoaded', () => {
-    // Clear both input boxes and reset color-coding checkbox to off on page load
-    document.getElementById('hexInput').textContent = '';
-    document.getElementById('jsonInput').value = '';
-    document.getElementById('err').style.display = 'none';
-    document.getElementById('colorToggle').checked = true;
-    document.getElementById('legendRow').style.display = 'none';
-    window._ubHasConverted = false;
-    updateByteCount();
-
-    document.getElementById('hexInput').addEventListener('paste', e => {
-        e.preventDefault();
-        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-        document.execCommand('insertText', false, text);
-    });
-});
-
-// Reset all colour spans to black as soon as the user edits, without changing checkbox state
-function onHexEdit() {
-    const box = document.getElementById('hexInput');
-    // Only strip spans if coloured spans are present, to avoid cursor-jump on plain typing
-    if (box.querySelector('span[style]')) {
-        // Measure the cursor's character offset from the start of the box's text
-        // before we destroy and rebuild the text node.
-        let caretOffset = 0;
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-            const r = document.createRange();
-            r.setStart(box, 0);
-            r.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
-            caretOffset = r.toString().length;
-        }
-
-        box.textContent = box.innerText;
-
-        // Restore cursor to the same character offset in the new plain text node.
-        if (sel && box.firstChild) {
-            const textNode = box.firstChild;
-            const pos = Math.min(caretOffset, textNode.length);
-            const r = document.createRange();
-            r.setStart(textNode, pos);
-            r.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(r);
-        }
-    }
-    updateByteCount();
-}
-
-function updateByteCount() {
-    const matches = getHexText().match(/(?:0x)?[0-9a-fA-F]{2}/gi);
-    const count = matches ? matches.length : 0;
-    document.getElementById('byteCount').textContent = count === 1 ? '1 byte' : `${count} bytes`;
-}
-
-function onColorToggle() {
-    const colorToggle = document.getElementById('colorToggle');
-    if (!colorToggle.checked) {
-        window._ubAnn = null;
-        window._ubHasConverted = false;
-        hideByteTooltip();
-        document.getElementById('legendRow').style.display = 'none';
-    } else {
-        document.getElementById('legendRow').style.display = 'flex';
-    }
-    // Re-apply coloring or plain rendering to the hex box
-    const hexText = getHexText();
-    const matches = hexText.match(/(?:0x)?[0-9a-fA-F]{2}/gi);
-    if (matches) {
-        const bytes = new Uint8Array(matches.map(h => parseInt(h, 16)));
-        const plainHex = matches.map(b => {
-            const n = parseInt(b, 16);
-            return '0x' + n.toString(16).toUpperCase().padStart(2, '0');
-        }).join(', ');
-        applyColoring(bytes, plainHex);
-    } else {
-        setHexPlain(hexText);
-    }
-}
-
+/* Parse the hex box text into a Uint8Array.
+   Accepts bytes in any of these formats: 0xFF  FF  ff  0xff */
 function parseHexBytes() {
     const matches = getHexText().match(/(?:0x)?[0-9a-fA-F]{2}/gi);
     if (!matches) throw new Error("No hex bytes found.");
     return new Uint8Array(matches.map(h => parseInt(h, 16)));
 }
 
-// If color-coding is on, annotate and render; otherwise ensure plain text
+/* Update the "N bytes" counter overlaid on the hex box. */
+function updateByteCount() {
+    const matches = getHexText().match(/(?:0x)?[0-9a-fA-F]{2}/gi);
+    const count   = matches ? matches.length : 0;
+    document.getElementById('byteCount').textContent =
+        count === 1 ? '1 byte' : `${count} bytes`;
+}
+
+/* Run the annotator on `bytes` and render colored spans if color-
+   coding is on; otherwise render plain text and clear the annotation. */
 function applyColoring(bytes, plainFallback) {
     if (document.getElementById('colorToggle').checked) {
-        const ann = new UBJSONAnnotator(bytes).annotate();
+        const ann     = new UBJSONAnnotator(bytes).annotate();
         window._ubAnn = { bytes, roles: ann.roles, typeMarkers: ann.typeMarkers };
         setHexColored(bytes, ann.roles);
     } else {
@@ -683,9 +1143,177 @@ function applyColoring(bytes, plainFallback) {
     }
 }
 
-/* ─────────────────────────────────────────────
-   UI ACTIONS
-───────────────────────────────────────────── */
+/* ── Page initialisation ──────────────────────────────────────── */
+/* DOMContentLoaded fires once the HTML has been parsed, before
+   images/stylesheets load — the right time to initialize the UI. */
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('hexInput').textContent    = '';
+    document.getElementById('jsonInput').value         = '';
+    document.getElementById('err').style.display       = 'none';
+    document.getElementById('colorToggle').checked     = true;    /* default ON */
+    document.getElementById('legendRow').style.display = 'none';  /* hidden until first convert */
+    window._ubHasConverted = false;
+    window._ubAnn          = null;
+    updateByteCount();
+
+    /* Strip rich-text on paste — only allow plain text into the
+       contenteditable div so our hex parser is never confused by HTML.
+       This fires before oninput, so the pasted text arrives as plain. */
+    document.getElementById('hexInput').addEventListener('paste', e => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        document.execCommand('insertText', false, text);
+    });
+});
+
+/* ── onHexEdit() ─────────────────────────────────────────────────
+   Called on every keystroke in the hex box (oninput event).
+   If colored spans are present, strips them back to plain black
+   text so the user's edit is immediately visible.
+   The caret position is saved before and restored after the DOM
+   rebuild so it does not jump to the beginning. ── */
+function onHexEdit() {
+    const box = document.getElementById('hexInput');
+
+    if (box.querySelector('span[style]')) {
+        /* Step 1: Capture caret as a plain character offset from the
+           start of the box text, before touching the DOM.
+           We create a range from box-start to the caret, then call
+           toString().length — the same technique as charOffsetFrom().
+           This is consistent across all browsers. */
+        let caretOffset = 0;
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            const r = document.createRange();
+            r.setStart(box, 0);
+            r.setEnd(sel.getRangeAt(0).startContainer,
+                     sel.getRangeAt(0).startOffset);
+            caretOffset = r.toString().length;
+        }
+
+        /* Step 2: Replace all child spans with a single plain text node.
+           box.innerText reads the visible text; assigning to textContent
+           replaces the entire subtree with one text node. */
+        box.textContent = box.innerText;
+
+        /* Step 3: Restore the caret to the same character offset in the
+           new text node. Math.min guards against the edge case where the
+           text became shorter than the saved offset. */
+        if (sel && box.firstChild) {
+            const textNode = box.firstChild;
+            const pos      = Math.min(caretOffset, textNode.length);
+            const r        = document.createRange();
+            r.setStart(textNode, pos);
+            r.collapse(true); /* collapsed range = caret with no selection */
+            sel.removeAllRanges();
+            sel.addRange(r);
+        }
+    }
+
+    updateByteCount();
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   5. UI ACTIONS
+   ──────────────────────────────────────────────────────────────
+   Button handlers, clipboard, color-coding toggle.
+══════════════════════════════════════════════════════════════ */
+
+/* ── onColorToggle() ──────────────────────────────────────────── */
+function onColorToggle() {
+    const colorToggle = document.getElementById('colorToggle');
+
+    if (!colorToggle.checked) {
+        /* Turning off: clear annotation state, hide tooltip and legend.
+           _ubHasConverted resets so the legend won't reappear if the
+           user re-enables without converting again first. */
+        window._ubAnn          = null;
+        window._ubHasConverted = false;
+        hideByteTooltip();
+        document.getElementById('legendRow').style.display = 'none';
+    } else {
+        /* Manually turning on: show the legend immediately. */
+        document.getElementById('legendRow').style.display = 'flex';
+    }
+
+    /* Re-render the hex box with or without color spans. */
+    const hexText = getHexText();
+    const matches = hexText.match(/(?:0x)?[0-9a-fA-F]{2}/gi);
+    if (matches) {
+        const bytes    = new Uint8Array(matches.map(h => parseInt(h, 16)));
+        const plainHex = matches
+            .map(b => '0x' + parseInt(b, 16).toString(16).toUpperCase().padStart(2, '0'))
+            .join(', ');
+        applyColoring(bytes, plainHex);
+    } else {
+        setHexPlain(hexText);
+    }
+}
+
+/* ── clearAll() ───────────────────────────────────────────────── */
+function clearAll() {
+    document.getElementById('hexInput').textContent = '';
+    document.getElementById('jsonInput').value      = '';
+    document.getElementById('err').style.display    = 'none';
+    window._ubAnn          = null;
+    window._ubHasConverted = false;
+    hideByteTooltip();
+    updateByteCount();
+}
+
+/* ── toJS() — Convert Hex → JSON ─────────────────────────────── */
+function toJS() {
+    document.getElementById('err').style.display = 'none';
+    try {
+        const bytes  = parseHexBytes();
+        const result = new UBJSONDecoder(bytes).read();
+        document.getElementById('jsonInput').value = JSON.stringify(result);
+
+        /* Normalise display to consistent 0x-prefixed uppercase. */
+        const plainHex = Array.from(bytes)
+            .map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0'))
+            .join(', ');
+        applyColoring(bytes, plainHex);
+
+        /* Show the legend on the first successful conversion with color-coding on. */
+        if (document.getElementById('colorToggle').checked) {
+            window._ubHasConverted = true;
+            document.getElementById('legendRow').style.display = 'flex';
+        }
+
+        updateByteCount();
+    } catch (e) {
+        const eDiv         = document.getElementById('err');
+        eDiv.style.display = 'block';
+        eDiv.innerText     = "Error: " + e.message;
+    }
+}
+
+/* ── toUB() — Convert JSON → Hex ─────────────────────────────── */
+function toUB() {
+    document.getElementById('err').style.display = 'none';
+    try {
+        const json    = JSON.parse(document.getElementById('jsonInput').value);
+        const encoder = new UBJSONEncoder();
+        encoder.write(json);
+        const bytes = encoder.getBytes();
+        applyColoring(bytes, encoder.getHex());
+
+        if (document.getElementById('colorToggle').checked) {
+            window._ubHasConverted = true;
+            document.getElementById('legendRow').style.display = 'flex';
+        }
+
+        updateByteCount();
+    } catch (e) {
+        const eDiv         = document.getElementById('err');
+        eDiv.style.display = 'block';
+        eDiv.innerText     = "Error: " + e.message;
+    }
+}
+
+/* ── copyHex() / copyText() ───────────────────────────────────── */
 function copyHex(btn) {
     const text = getHexText().trim();
     if (!text) return;
@@ -706,60 +1334,12 @@ function copyText(id, btn) {
     });
 }
 
-function clearAll() {
-    document.getElementById('hexInput').textContent = '';
-    document.getElementById('jsonInput').value = '';
-    document.getElementById('err').style.display = 'none';
-    window._ubAnn = null;
-    window._ubHasConverted = false;
-    hideByteTooltip();
-    updateByteCount();
-}
-
-function toJS() {
-    document.getElementById('err').style.display = 'none';
-    try {
-        const bytes = parseHexBytes();
-        const result = new UBJSONDecoder(bytes).read();
-        document.getElementById('jsonInput').value = JSON.stringify(result);
-        // Re-normalise the hex to 0x-prefixed format as the canonical plain form
-        const plainHex = Array.from(bytes)
-            .map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(', ');
-        applyColoring(bytes, plainHex);
-        if (document.getElementById('colorToggle').checked) {
-            window._ubHasConverted = true;
-            document.getElementById('legendRow').style.display = 'flex';
-        }
-        updateByteCount();
-    } catch (e) {
-        const eDiv = document.getElementById('err');
-        eDiv.style.display = 'block';
-        eDiv.innerText = "Error: " + e.message;
-    }
-}
-
-function toUB() {
-    document.getElementById('err').style.display = 'none';
-    try {
-        const json = JSON.parse(document.getElementById('jsonInput').value);
-        const encoder = new UBJSONEncoder();
-        encoder.write(json);
-        const bytes = encoder.getBytes();
-        applyColoring(bytes, encoder.getHex());
-        if (document.getElementById('colorToggle').checked) {
-            window._ubHasConverted = true;
-            document.getElementById('legendRow').style.display = 'flex';
-        }
-        updateByteCount();
-    } catch (e) {
-        const eDiv = document.getElementById('err');
-        eDiv.style.display = 'block';
-        eDiv.innerText = "Error: " + e.message;
-    }
-}
 </script>
 
-<!-- Type Reference Card -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     TYPE REFERENCE CARD  (collapsible)
+════════════════════════════════════════════════════════════════ -->
 <div class="ref-card" id="typeRefCard">
     <div class="ref-header" onclick="toggleCard('typeRefCard')">
         <span class="ref-title">Type Reference</span>
@@ -771,32 +1351,34 @@ function toUB() {
                 <tr><th>Type</th><th>Marker</th><th>Hex</th><th>Description</th></tr>
             </thead>
             <tbody>
-                <tr><td>null</td>          <td><span class="marker-pill">Z</span></td><td class="hex-cell">0x5A</td><td>JSON null value</td></tr>
-                <tr><td>no-op</td>         <td><span class="marker-pill">N</span></td><td class="hex-cell">0x4E</td><td>No-operation / keep-alive signal, no value</td></tr>
-                <tr><td>true</td>          <td><span class="marker-pill">T</span></td><td class="hex-cell">0x54</td><td>Boolean true</td></tr>
-                <tr><td>false</td>         <td><span class="marker-pill">F</span></td><td class="hex-cell">0x46</td><td>Boolean false</td></tr>
-                <tr><td>int8</td>          <td><span class="marker-pill">i</span></td><td class="hex-cell">0x69</td><td>Signed 8-bit integer &nbsp;(−128 to 127)</td></tr>
-                <tr><td>uint8</td>         <td><span class="marker-pill">U</span></td><td class="hex-cell">0x55</td><td>Unsigned 8-bit integer &nbsp;(0 to 255)</td></tr>
-                <tr><td>int16</td>         <td><span class="marker-pill">I</span></td><td class="hex-cell">0x49</td><td>Signed 16-bit integer &nbsp;(−32,768 to 32,767)</td></tr>
-                <tr><td>int32</td>         <td><span class="marker-pill">l</span></td><td class="hex-cell">0x6C</td><td>Signed 32-bit integer &nbsp;(−2,147,483,648 to 2,147,483,647)</td></tr>
-                <tr><td>int64</td>         <td><span class="marker-pill">L</span></td><td class="hex-cell">0x4C</td><td>Signed 64-bit integer &nbsp;(−2⁶³ to 2⁶³−1)</td></tr>
-                <tr><td>float32</td>       <td><span class="marker-pill">d</span></td><td class="hex-cell">0x64</td><td>IEEE 754 single-precision float</td></tr>
-                <tr><td>float64</td>       <td><span class="marker-pill">D</span></td><td class="hex-cell">0x44</td><td>IEEE 754 double-precision float</td></tr>
-                <tr><td>high-precision</td><td><span class="marker-pill">H</span></td><td class="hex-cell">0x48</td><td>Arbitrary-precision number encoded as a UTF-8 string</td></tr>
-                <tr><td>char</td>          <td><span class="marker-pill">C</span></td><td class="hex-cell">0x43</td><td>Single printable ASCII character (0–127)</td></tr>
-                <tr><td>string</td>        <td><span class="marker-pill">S</span></td><td class="hex-cell">0x53</td><td>UTF-8 string: marker + typed-integer length + bytes</td></tr>
-                <tr><td>array start</td>   <td><span class="marker-pill">[</span></td><td class="hex-cell">0x5B</td><td>Begin array container</td></tr>
-                <tr><td>array end</td>     <td><span class="marker-pill">]</span></td><td class="hex-cell">0x5D</td><td>End array container (omitted when # count used)</td></tr>
-                <tr><td>object start</td>  <td><span class="marker-pill">{</span></td><td class="hex-cell">0x7B</td><td>Begin object container</td></tr>
-                <tr><td>object end</td>    <td><span class="marker-pill">}</span></td><td class="hex-cell">0x7D</td><td>End object container (omitted when # count used)</td></tr>
-                <tr><td>type (optimized)</td><td><span class="marker-pill">$</span></td><td class="hex-cell">0x24</td><td>Declares a single shared type for all container elements</td></tr>
+                <tr><td>null</td>             <td><span class="marker-pill">Z</span></td><td class="hex-cell">0x5A</td><td>JSON null value</td></tr>
+                <tr><td>no-op</td>            <td><span class="marker-pill">N</span></td><td class="hex-cell">0x4E</td><td>No-operation / keep-alive signal, no value</td></tr>
+                <tr><td>true</td>             <td><span class="marker-pill">T</span></td><td class="hex-cell">0x54</td><td>Boolean true</td></tr>
+                <tr><td>false</td>            <td><span class="marker-pill">F</span></td><td class="hex-cell">0x46</td><td>Boolean false</td></tr>
+                <tr><td>int8</td>             <td><span class="marker-pill">i</span></td><td class="hex-cell">0x69</td><td>Signed 8-bit integer &nbsp;(−128 to 127)</td></tr>
+                <tr><td>uint8</td>            <td><span class="marker-pill">U</span></td><td class="hex-cell">0x55</td><td>Unsigned 8-bit integer &nbsp;(0 to 255)</td></tr>
+                <tr><td>int16</td>            <td><span class="marker-pill">I</span></td><td class="hex-cell">0x49</td><td>Signed 16-bit integer &nbsp;(−32,768 to 32,767)</td></tr>
+                <tr><td>int32</td>            <td><span class="marker-pill">l</span></td><td class="hex-cell">0x6C</td><td>Signed 32-bit integer &nbsp;(−2,147,483,648 to 2,147,483,647)</td></tr>
+                <tr><td>int64</td>            <td><span class="marker-pill">L</span></td><td class="hex-cell">0x4C</td><td>Signed 64-bit integer &nbsp;(−2⁶³ to 2⁶³−1)</td></tr>
+                <tr><td>float32</td>          <td><span class="marker-pill">d</span></td><td class="hex-cell">0x64</td><td>IEEE 754 single-precision float</td></tr>
+                <tr><td>float64</td>          <td><span class="marker-pill">D</span></td><td class="hex-cell">0x44</td><td>IEEE 754 double-precision float</td></tr>
+                <tr><td>high-precision</td>   <td><span class="marker-pill">H</span></td><td class="hex-cell">0x48</td><td>Arbitrary-precision number encoded as a UTF-8 string</td></tr>
+                <tr><td>char</td>             <td><span class="marker-pill">C</span></td><td class="hex-cell">0x43</td><td>Single printable ASCII character (0–127)</td></tr>
+                <tr><td>string</td>           <td><span class="marker-pill">S</span></td><td class="hex-cell">0x53</td><td>UTF-8 string: marker + typed-integer length + bytes</td></tr>
+                <tr><td>array start</td>      <td><span class="marker-pill">[</span></td><td class="hex-cell">0x5B</td><td>Begin array container</td></tr>
+                <tr><td>array end</td>        <td><span class="marker-pill">]</span></td><td class="hex-cell">0x5D</td><td>End array container (omitted when # count used)</td></tr>
+                <tr><td>object start</td>     <td><span class="marker-pill">{</span></td><td class="hex-cell">0x7B</td><td>Begin object container</td></tr>
+                <tr><td>object end</td>       <td><span class="marker-pill">}</span></td><td class="hex-cell">0x7D</td><td>End object container (omitted when # count used)</td></tr>
+                <tr><td>type (optimized)</td> <td><span class="marker-pill">$</span></td><td class="hex-cell">0x24</td><td>Declares a single shared type for all container elements</td></tr>
                 <tr><td>count (optimized)</td><td><span class="marker-pill">#</span></td><td class="hex-cell">0x23</td><td>Declares the element count; suppresses the end marker</td></tr>
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- ASCII Table Card -->
+<!-- ═══════════════════════════════════════════════════════════════
+     ASCII TABLE CARD  (collapsible, built dynamically by JS)
+════════════════════════════════════════════════════════════════ -->
 <div class="ref-card" id="asciiCard">
     <div class="ref-header" onclick="toggleCard('asciiCard')">
         <span class="ref-title">ASCII Table</span>
@@ -807,79 +1389,129 @@ function toUB() {
     </div>
 </div>
 
-<script>
-function toggleCard(id) {
-    document.getElementById(id).classList.toggle('open');
-}
+</div><!-- /.page-wrap -->
 
-/* Build the ASCII table dynamically across 3 equal columns */
-(function buildAsciiTable() {
-    const ROWS_PER_COL = 44; /* 0-127 = 128 values, split across 3 columns (44/44/40) */
-    const labels = {
-        0:'NUL',1:'SOH',2:'STX',3:'ETX',4:'EOT',5:'ENQ',6:'ACK',7:'BEL',
-        8:'BS', 9:'HT', 10:'LF',11:'VT', 12:'FF', 13:'CR', 14:'SO', 15:'SI',
-        16:'DLE',17:'DC1',18:'DC2',19:'DC3',20:'DC4',21:'NAK',22:'SYN',23:'ETB',
-        24:'CAN',25:'EM', 26:'SUB',27:'ESC',28:'FS', 29:'GS', 30:'RS', 31:'US',
-        127:'DEL'
-    };
-    const grid = document.getElementById('asciiGrid');
-    for (let col = 0; col < 3; col++) {
-        const start = col * ROWS_PER_COL;
-        const end   = Math.min(start + ROWS_PER_COL, 128);
-        const div = document.createElement('div');
-        div.className = 'ascii-col';
-        let html = '<table class="ref-table"><thead><tr><th>Dec</th><th>Hex</th><th>ASCII</th></tr></thead><tbody>';
-        for (let c = start; c < end; c++) {
-            const hexVal  = '0x' + c.toString(16).toUpperCase().padStart(2, '0');
-            const display = labels[c] !== undefined ? labels[c]
-                          : (c === 32 ? 'SPC' : String.fromCharCode(c));
-            html += `<tr><td>${c}</td><td class="hex-cell">${hexVal}</td><td>${display}</td></tr>`;
-        }
-        html += '</tbody></table>';
-        div.innerHTML = html;
-        grid.appendChild(div);
-    }
-})();
-</script>
-
-</div><!-- /page-wrap -->
-
+<!-- ═══════════════════════════════════════════════════════════════
+     BYTE INSPECTOR TOOLTIP  (fixed-position, pointer-events:none)
+════════════════════════════════════════════════════════════════ -->
 <div id="byteTooltip">
     <div class="tip-row" id="tipRow"></div>
     <div class="tip-arrow"></div>
 </div>
 
+
+<!-- ═══════════════════════════════════════════════════════════════
+     REFERENCE CARDS + BYTE INSPECTOR JAVASCRIPT
+════════════════════════════════════════════════════════════════ -->
 <script>
-/* ─────────────────────────────────────────────
+
+/* ── toggleCard() ─────────────────────────────────────────────── */
+function toggleCard(id) {
+    document.getElementById(id).classList.toggle('open');
+}
+
+/* ── ASCII table builder ──────────────────────────────────────────
+   IIFE (Immediately Invoked Function Expression) — runs once on
+   load, like a C init function called at program startup.
+   Splits ASCII 0–127 across 3 equal-width columns. ── */
+(function buildAsciiTable() {
+    const ROWS_PER_COL = 44; /* 128 values across 3 columns → 44, 44, 40 */
+
+    /* Human-readable names for non-printable control characters. */
+    const CTRL_LABELS = {
+          0:'NUL',  1:'SOH',  2:'STX',  3:'ETX',  4:'EOT',  5:'ENQ',  6:'ACK',  7:'BEL',
+          8:'BS',   9:'HT',  10:'LF',  11:'VT',  12:'FF',  13:'CR',  14:'SO',  15:'SI',
+         16:'DLE', 17:'DC1', 18:'DC2', 19:'DC3', 20:'DC4', 21:'NAK', 22:'SYN', 23:'ETB',
+         24:'CAN', 25:'EM',  26:'SUB', 27:'ESC', 28:'FS',  29:'GS',  30:'RS',  31:'US',
+        127:'DEL'
+    };
+
+    const grid = document.getElementById('asciiGrid');
+
+    for (let col = 0; col < 3; col++) {
+        const start = col * ROWS_PER_COL;
+        const end   = Math.min(start + ROWS_PER_COL, 128);
+
+        /* Build the column's table as an HTML string then inject it in one
+           operation — faster than appending individual DOM nodes in a loop. */
+        let html = '<table class="ref-table">' +
+                   '<thead><tr><th>Dec</th><th>Hex</th><th>Char</th></tr></thead>' +
+                   '<tbody>';
+
+        for (let c = start; c < end; c++) {
+            const hexStr  = '0x' + c.toString(16).toUpperCase().padStart(2, '0');
+            const display = (CTRL_LABELS[c] !== undefined) ? CTRL_LABELS[c]
+                          : (c === 32 ? 'SPC' : String.fromCharCode(c));
+            html += `<tr><td>${c}</td><td class="hex-cell">${hexStr}</td><td>${display}</td></tr>`;
+        }
+
+        html += '</tbody></table>';
+
+        const colDiv     = document.createElement('div');
+        colDiv.className = 'ascii-col';
+        colDiv.innerHTML = html;
+        grid.appendChild(colDiv);
+    }
+})();
+
+
+/* ══════════════════════════════════════════════════════════════
    BYTE INSPECTOR TOOLTIP
-   Shows a floating tooltip when the user selects
-   byte spans while color-coding is on.
-   - 'marker' (single byte): shows marker char + type name
-   - 'length' (one or more): shows "Length: N"
-   - 'data'  (one or more): shows type + decoded value + byte count
+   ──────────────────────────────────────────────────────────────
+   Listens for text selection changes inside the hex box. When
+   the user selects one or more fully-enclosed byte spans while
+   color-coding is on, a floating tooltip appears above the
+   selection showing the bytes decoded per their UBJSON type.
 
-   Containment uses selectNodeContents() so that cursor
-   positions from natural drag and shift-arrow selections
-   (which live inside text nodes) align correctly with the
-   span boundaries. selectNode() would place boundaries
-   outside the element tags, causing mismatches.
-───────────────────────────────────────────── */
+   Three tooltip modes based on byte role:
+     'marker' (1 byte)   — Marker: X  |  Type: <name>
+     'length' (1+ bytes) — Length: N
+     'data'   (1+ bytes) — Type: <name>  |  Value: <decoded>  |  Bytes: N
 
+   Cross-browser selection detection:
+   Browser selection APIs (compareBoundaryPoints, containsNode,
+   selectNodeContents) have subtle inconsistencies across Firefox,
+   Chrome, Safari, and Edge when dealing with inline <span>
+   elements in a contenteditable div. The reliable fix is to avoid
+   those APIs and instead convert all positions to plain character
+   offsets using range.toString().length — a string operation that
+   all browsers agree on. Integer comparison of offsets then
+   determines whether a span is fully inside the selection.
+══════════════════════════════════════════════════════════════ */
+
+/* Human-readable type names keyed by UBJSON marker character.
+   Like an enum-to-string lookup table in C. */
 const TYPE_LABELS = {
-    'U':'uint8',  'i':'int8',   'I':'int16',  'l':'int32',  'L':'int64',
-    'd':'float32','D':'float64','C':'char',    'S':'string', 'H':'high-precision',
-    'T':'true',   'F':'false',  'Z':'null',    'N':'no-op',
-    '{':'object start', '}':'object end',
-    '[':'array start',  ']':'array end',
-    '$':'type specifier', '#':'count specifier'
+    'U': 'uint8',          'i': 'int8',          'I': 'int16',
+    'l': 'int32',          'L': 'int64',          'd': 'float32',
+    'D': 'float64',        'C': 'char',           'S': 'string',
+    'H': 'high-precision', 'T': 'true',           'F': 'false',
+    'Z': 'null',           'N': 'no-op',
+    '{': 'object start',   '}': 'object end',
+    '[': 'array start',    ']': 'array end',
+    '$': 'type specifier', '#': 'count specifier'
 };
 
-const FIXED_SIZES = { 'U':1, 'i':1, 'C':1, 'I':2, 'l':4, 'd':4, 'L':8, 'D':8 };
+/* Fixed payload byte counts for numeric types. Variable-length
+   types (strings, char-arrays) are absent from this table. */
+const FIXED_SIZES = {
+    'U': 1, 'i': 1, 'C': 1,
+    'I': 2,
+    'l': 4, 'd': 4,
+    'L': 8, 'D': 8
+};
 
+/* ── decodeBytes() ──────────────────────────────────────────────
+   Interpret a Uint8Array as the given UBJSON type and return a
+   display string. Returns null if the byte count does not match
+   the expected fixed size (partial selection of a multi-byte field). ── */
 function decodeBytes(bytes, typeChar) {
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const view     = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const expected = FIXED_SIZES[typeChar];
+
+    /* Reject partial selections — e.g. selecting 1 byte of a 4-byte int32. */
     if (expected !== undefined && bytes.length !== expected) return null;
+
     switch (typeChar) {
         case 'U': return bytes[0].toString();
         case 'i': return view.getInt8(0).toString();
@@ -888,40 +1520,71 @@ function decodeBytes(bytes, typeChar) {
         case 'L': return view.getBigInt64(0, false).toString();
         case 'd': {
             const v = view.getFloat32(0, false);
-            return Number.isFinite(v) ? (Number.isInteger(v) ? v.toString() : parseFloat(v.toPrecision(7)).toString()) : v.toString();
+            /* toPrecision(7) matches float32's ~7 significant decimal digits;
+               parseFloat strips trailing zeros from the result. */
+            return Number.isFinite(v)
+                ? (Number.isInteger(v) ? v.toString() : parseFloat(v.toPrecision(7)).toString())
+                : v.toString();
         }
         case 'D': return view.getFloat64(0, false).toString();
         case 'C': return "'" + String.fromCharCode(bytes[0]) + "'";
         case 'S': case 'H': return '"' + new TextDecoder().decode(bytes) + '"';
-        default: return null;
+        default:  return null;
     }
 }
 
+/* ── hideByteTooltip() ──────────────────────────────────────────
+   Hide the tooltip. Called on deselect, color-coding off, or clear. ── */
 function hideByteTooltip() {
     document.getElementById('byteTooltip').style.display = 'none';
 }
 
+/* ── showByteTooltip() ──────────────────────────────────────────
+   Render and position the tooltip above selRect.
+   cols is an array of { key, val } objects displayed left-to-right
+   with thin vertical dividers between them. ── */
 function showByteTooltip(selRect, cols) {
     const tip = document.getElementById('byteTooltip');
-    const col  = (key, val) =>
-        `<div class="tip-col"><span class="tip-key">${key}</span><span class="tip-val">${val}</span></div>`;
-    const div  = '<div class="tip-div"></div>';
-    document.getElementById('tipRow').innerHTML =
-        cols.map((c, i) => (i > 0 ? div : '') + col(c.key, c.val)).join('');
 
+    /* Build the inner HTML: alternating key-value columns and dividers. */
+    const makeCol = (key, val) =>
+        `<div class="tip-col">` +
+        `<span class="tip-key">${key}</span>` +
+        `<span class="tip-val">${val}</span>` +
+        `</div>`;
+    const makeDivider = '<div class="tip-div"></div>';
+
+    document.getElementById('tipRow').innerHTML =
+        cols.map((c, i) => (i > 0 ? makeDivider : '') + makeCol(c.key, c.val)).join('');
+
+    /* Position: centered horizontally above the selection, clamped
+       to the viewport so it never clips off the left or right edge. */
     tip.style.display = 'block';
-    const cx         = selRect.left + selRect.width / 2;
-    const tipW       = tip.offsetWidth;
-    const tipH       = tip.offsetHeight;
+
+    const cx          = selRect.left + selRect.width / 2; /* center of selection */
+    const tipW        = tip.offsetWidth;
+    const tipH        = tip.offsetHeight;
     const clampedLeft = Math.max(6, Math.min(cx - tipW / 2, window.innerWidth - tipW - 6));
+
     tip.style.left = clampedLeft + 'px';
     tip.style.top  = (selRect.top - tipH - 10) + 'px';
+
+    /* The arrow always points at the true horizontal center of the selection,
+       even if the tooltip box was pushed left or right by the clamp. */
     tip.querySelector('.tip-arrow').style.left = Math.round(cx - clampedLeft) + 'px';
 }
 
-// Returns the character offset of (node, offset) measured from the start
-// of root, by creating a range and reading its text length.
-// This is purely arithmetic on text content — no boundary comparison APIs.
+/* ── charOffsetFrom() ───────────────────────────────────────────
+   Returns the number of characters between the start of `root`
+   and the DOM position (node, offset).
+
+   Method: create a range from root's beginning to the target
+   position, then call toString().length. The browser counts the
+   text characters in that range — a pure string operation that is
+   consistent across all browsers. This avoids the pitfalls of
+   compareBoundaryPoints, containsNode, and selectNodeContents,
+   which all have subtle cross-browser differences when used with
+   inline elements inside contenteditable divs. ── */
 function charOffsetFrom(root, node, offset) {
     const r = document.createRange();
     r.setStart(root, 0);
@@ -929,80 +1592,115 @@ function charOffsetFrom(root, node, offset) {
     return r.toString().length;
 }
 
-// Returns sorted byte indices whose spans are *fully* enclosed by the selection.
-// Works by converting everything to plain character offsets within the hex box's
-// text, then doing integer comparisons — avoids all cross-browser quirks in
-// containsNode / compareBoundaryPoints / selectNodeContents.
+/* ── fullySelectedByteIndices() ─────────────────────────────────
+   Returns a sorted array of byte indices (from data-bi attributes)
+   whose <span> elements are fully enclosed by the selection.
+
+   A span is "fully enclosed" when:
+     charOffset(spanStart) >= charOffset(selectionStart)
+     AND
+     charOffset(spanEnd)   <= charOffset(selectionEnd)
+
+   Commas and spaces between spans are bare text nodes with no
+   data-bi attribute, so querySelectorAll silently ignores them —
+   selecting them neither helps nor hurts. ── */
 function fullySelectedByteIndices(sel, hexInput) {
     if (sel.rangeCount === 0) return [];
-    const range = sel.getRangeAt(0);
+
+    const range    = sel.getRangeAt(0);
     const selStart = charOffsetFrom(hexInput, range.startContainer, range.startOffset);
     const selEnd   = charOffsetFrom(hexInput, range.endContainer,   range.endOffset);
 
     const indices = [];
     for (const span of hexInput.querySelectorAll('[data-bi]')) {
-        const tn = span.firstChild;
-        if (!tn) continue;
-        const spanStart = charOffsetFrom(hexInput, tn, 0);
-        const spanEnd   = charOffsetFrom(hexInput, tn, tn.length);
-        if (spanStart >= selStart && spanEnd <= selEnd)
+        const textNode = span.firstChild;
+        if (!textNode) continue;
+
+        const spanStart = charOffsetFrom(hexInput, textNode, 0);
+        const spanEnd   = charOffsetFrom(hexInput, textNode, textNode.length);
+
+        if (spanStart >= selStart && spanEnd <= selEnd) {
             indices.push(parseInt(span.dataset.bi));
+        }
     }
-    return indices;
+
+    return indices; /* already in DOM order (ascending byte index) */
 }
 
+/* ── selectionchange event handler ──────────────────────────────
+   Fires every time the selection changes anywhere on the page.
+   We guard on the hex box and color-coding, then dispatch to the
+   appropriate tooltip mode based on the selected bytes' role. ── */
 document.addEventListener('selectionchange', () => {
+
+    /* Do nothing if color-coding is off — no colored spans to hit-test. */
     if (!document.getElementById('colorToggle').checked) return;
 
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) { hideByteTooltip(); return; }
 
+    /* No selection, or just a caret (isCollapsed = no text highlighted). */
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        hideByteTooltip();
+        return;
+    }
+
+    /* Ignore selections outside the hex input box. */
     const hexInput = document.getElementById('hexInput');
-    if (!hexInput.contains(sel.anchorNode)) { hideByteTooltip(); return; }
+    if (!hexInput.contains(sel.anchorNode)) {
+        hideByteTooltip();
+        return;
+    }
 
     const indices = fullySelectedByteIndices(sel, hexInput);
-
     if (indices.length === 0) { hideByteTooltip(); return; }
 
+    /* Annotation state must exist (populated on conversion). */
     const ann = window._ubAnn;
     if (!ann) { hideByteTooltip(); return; }
 
+    const selRect   = sel.getRangeAt(0).getBoundingClientRect();
     const firstRole = ann.roles[indices[0]];
 
-    // ── Marker tooltip (single byte only) ────────────────────────────────────
+    /* ── Mode 1: Marker tooltip (single byte only) ── */
     if (firstRole === 'marker' && indices.length === 1) {
         const markerChar = String.fromCharCode(ann.bytes[indices[0]]);
-        showByteTooltip(sel.getRangeAt(0).getBoundingClientRect(), [
+        showByteTooltip(selRect, [
             { key: 'Marker', val: markerChar },
             { key: 'Type',   val: TYPE_LABELS[markerChar] || markerChar }
         ]);
         return;
     }
 
-    // All remaining cases require a uniform role across all selected bytes.
-    if (!indices.every(i => ann.roles[i] === firstRole)) { hideByteTooltip(); return; }
+    /* For length and data modes, every selected byte must share the same role. */
+    if (!indices.every(i => ann.roles[i] === firstRole)) {
+        hideByteTooltip();
+        return;
+    }
 
-    // All selected bytes must share the same typeChar entry.
+    /* Every selected byte must also share the same governing typeChar. */
     const typeChar = ann.typeMarkers[indices[0]];
-    if (!typeChar || !indices.every(i => ann.typeMarkers[i] === typeChar)) { hideByteTooltip(); return; }
+    if (!typeChar || !indices.every(i => ann.typeMarkers[i] === typeChar)) {
+        hideByteTooltip();
+        return;
+    }
 
     const selectedBytes = new Uint8Array(indices.map(i => ann.bytes[i]));
 
-    // ── Length tooltip ────────────────────────────────────────────────────────
+    /* ── Mode 2: Length tooltip ── */
     if (firstRole === 'length') {
         const decoded = decodeBytes(selectedBytes, typeChar);
         if (decoded === null) { hideByteTooltip(); return; }
-        showByteTooltip(sel.getRangeAt(0).getBoundingClientRect(), [
+        showByteTooltip(selRect, [
             { key: 'Length', val: decoded }
         ]);
         return;
     }
 
-    // ── Data tooltip ──────────────────────────────────────────────────────────
+    /* ── Mode 3: Data tooltip ── */
     if (firstRole === 'data') {
         const decoded = decodeBytes(selectedBytes, typeChar);
         if (decoded === null) { hideByteTooltip(); return; }
-        showByteTooltip(sel.getRangeAt(0).getBoundingClientRect(), [
+        showByteTooltip(selRect, [
             { key: 'Type',  val: TYPE_LABELS[typeChar] || typeChar },
             { key: 'Value', val: decoded },
             { key: 'Bytes', val: indices.length }
@@ -1012,6 +1710,7 @@ document.addEventListener('selectionchange', () => {
 
     hideByteTooltip();
 });
+
 </script>
 
 </body>
