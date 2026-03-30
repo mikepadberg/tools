@@ -898,18 +898,33 @@ function showByteTooltip(selRect, cols) {
     tip.querySelector('.tip-arrow').style.left = Math.round(cx - clampedLeft) + 'px';
 }
 
-// Returns sorted byte indices that are *fully* enclosed by `range`.
-// Uses selectNodeContents so the range boundaries align with text-node
-// character positions — exactly where browser cursors land during
-// drags and shift-arrow selections.
-function fullySelectedByteIndices(range, hexInput) {
+// Returns the character offset of (node, offset) measured from the start
+// of root, by creating a range and reading its text length.
+// This is purely arithmetic on text content — no boundary comparison APIs.
+function charOffsetFrom(root, node, offset) {
+    const r = document.createRange();
+    r.setStart(root, 0);
+    r.setEnd(node, offset);
+    return r.toString().length;
+}
+
+// Returns sorted byte indices whose spans are *fully* enclosed by the selection.
+// Works by converting everything to plain character offsets within the hex box's
+// text, then doing integer comparisons — avoids all cross-browser quirks in
+// containsNode / compareBoundaryPoints / selectNodeContents.
+function fullySelectedByteIndices(sel, hexInput) {
+    if (sel.rangeCount === 0) return [];
+    const range = sel.getRangeAt(0);
+    const selStart = charOffsetFrom(hexInput, range.startContainer, range.startOffset);
+    const selEnd   = charOffsetFrom(hexInput, range.endContainer,   range.endOffset);
+
     const indices = [];
     for (const span of hexInput.querySelectorAll('[data-bi]')) {
-        const sr = document.createRange();
-        sr.selectNodeContents(span);
-        // range.start <= span content start  AND  range.end >= span content end
-        if (range.compareBoundaryPoints(Range.START_TO_START, sr) <= 0 &&
-            range.compareBoundaryPoints(Range.END_TO_END,     sr) >= 0)
+        const tn = span.firstChild;
+        if (!tn) continue;
+        const spanStart = charOffsetFrom(hexInput, tn, 0);
+        const spanEnd   = charOffsetFrom(hexInput, tn, tn.length);
+        if (spanStart >= selStart && spanEnd <= selEnd)
             indices.push(parseInt(span.dataset.bi));
     }
     return indices;
@@ -924,8 +939,7 @@ document.addEventListener('selectionchange', () => {
     const hexInput = document.getElementById('hexInput');
     if (!hexInput.contains(sel.anchorNode)) { hideByteTooltip(); return; }
 
-    const range   = sel.getRangeAt(0);
-    const indices = fullySelectedByteIndices(range, hexInput);
+    const indices = fullySelectedByteIndices(sel, hexInput);
 
     if (indices.length === 0) { hideByteTooltip(); return; }
 
@@ -937,7 +951,7 @@ document.addEventListener('selectionchange', () => {
     // ── Marker tooltip (single byte only) ────────────────────────────────────
     if (firstRole === 'marker' && indices.length === 1) {
         const markerChar = String.fromCharCode(ann.bytes[indices[0]]);
-        showByteTooltip(range.getBoundingClientRect(), [
+        showByteTooltip(sel.getRangeAt(0).getBoundingClientRect(), [
             { key: 'Marker', val: markerChar },
             { key: 'Type',   val: TYPE_LABELS[markerChar] || markerChar }
         ]);
@@ -957,7 +971,7 @@ document.addEventListener('selectionchange', () => {
     if (firstRole === 'length') {
         const decoded = decodeBytes(selectedBytes, typeChar);
         if (decoded === null) { hideByteTooltip(); return; }
-        showByteTooltip(range.getBoundingClientRect(), [
+        showByteTooltip(sel.getRangeAt(0).getBoundingClientRect(), [
             { key: 'Length', val: decoded }
         ]);
         return;
@@ -967,7 +981,7 @@ document.addEventListener('selectionchange', () => {
     if (firstRole === 'data') {
         const decoded = decodeBytes(selectedBytes, typeChar);
         if (decoded === null) { hideByteTooltip(); return; }
-        showByteTooltip(range.getBoundingClientRect(), [
+        showByteTooltip(sel.getRangeAt(0).getBoundingClientRect(), [
             { key: 'Type',  val: TYPE_LABELS[typeChar] || typeChar },
             { key: 'Value', val: decoded },
             { key: 'Bytes', val: indices.length }
