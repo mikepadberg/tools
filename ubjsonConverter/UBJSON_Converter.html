@@ -606,8 +606,29 @@ function onHexEdit() {
     const box = document.getElementById('hexInput');
     // Only strip spans if coloured spans are present, to avoid cursor-jump on plain typing
     if (box.querySelector('span[style]')) {
-        const plain = box.innerText;
-        box.textContent = plain;
+        // Measure the cursor's character offset from the start of the box's text
+        // before we destroy and rebuild the text node.
+        let caretOffset = 0;
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            const r = document.createRange();
+            r.setStart(box, 0);
+            r.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+            caretOffset = r.toString().length;
+        }
+
+        box.textContent = box.innerText;
+
+        // Restore cursor to the same character offset in the new plain text node.
+        if (sel && box.firstChild) {
+            const textNode = box.firstChild;
+            const pos = Math.min(caretOffset, textNode.length);
+            const r = document.createRange();
+            r.setStart(textNode, pos);
+            r.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(r);
+        }
     }
     updateByteCount();
 }
